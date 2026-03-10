@@ -1,0 +1,26 @@
+# Dependências
+node_modules/
+
+# Build
+dist/
+
+# Dados baixados (CSV da ANVISA e CMED — grandes e regeneráveis automaticamente)
+data/
+
+# Logs
+*.log
+npm-debug.log*
+*.js.map
+
+# Ambiente
+.env
+.env.local
+
+# Sistema
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

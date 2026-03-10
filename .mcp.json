@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "saude-br": {
+      "command": "npx",
+      "args": ["-y", "mcp-saude-br"]
+    }
+  }
+}
