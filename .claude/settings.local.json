@@ -16,7 +16,9 @@
       "WebFetch(domain:dados.gov.br)",
       "Bash(node -e \":*)",
       "Bash(iconv -f latin1 -t utf8)",
-      "Bash(npm view:*)"
+      "Bash(npm view:*)",
+      "Bash(npm version:*)",
+      "Bash(npm publish:*)"
     ]
   }
 }
