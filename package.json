@@ -1,6 +1,6 @@
 {
   "name": "mcp-saude-br",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP Server para dados de medicamentos brasileiros (ANVISA, CMED, Bulário Eletrônico)",
   "type": "module",
   "main": "dist/index.js",
@@ -11,7 +11,14 @@
     "dist/",
     "README.md"
   ],
-  "keywords": ["mcp", "anvisa", "medicamentos", "saude", "brasil", "claude"],
+  "keywords": [
+    "mcp",
+    "anvisa",
+    "medicamentos",
+    "saude",
+    "brasil",
+    "claude"
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/RodrigoFlorencio86/mcp-saude-br.git"
