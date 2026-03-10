@@ -5,7 +5,7 @@ node_modules/
 dist/
 
 # Dados baixados (CSV da ANVISA e CMED — grandes e regeneráveis automaticamente)
-data/
+/data/
 
 # Logs
 *.log
