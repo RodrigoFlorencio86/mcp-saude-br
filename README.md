@@ -1,8 +1,26 @@
 # mcp-saude-br
 
-**MCP Server para dados de medicamentos brasileiros** — alimentado exclusivamente por fontes oficiais do governo (ANVISA e CMED).
+**MCP Server para dados de medicamentos e doenças brasileiros** — alimentado exclusivamente por fontes oficiais do governo (ANVISA, CMED e DATASUS).
 
-Permite que Claude e outros agentes de IA consultem informações sobre medicamentos registrados no Brasil diretamente na conversa: busca por nome, princípio ativo, fabricante, condição médica, preços oficiais, bulas e status de registro.
+Permite que Claude e outros agentes de IA consultem informações sobre medicamentos registrados no Brasil e a Classificação Internacional de Doenças (CID-10) diretamente na conversa.
+
+---
+
+## Números da base de dados
+
+> Os números abaixo refletem o estado das fontes em **março de 2026**. Os dados são atualizados automaticamente pelo servidor (ANVISA semanalmente, CMED mensalmente, CID-10 anualmente) — o texto deste README não é atualizado a cada ciclo.
+
+| Base | Volume | Fonte |
+|------|--------|-------|
+| Medicamentos registrados (total) | **42.842** | ANVISA Open Data |
+| Medicamentos com registro válido | **17.206** | ANVISA Open Data |
+| Medicamentos genéricos | **8.015** | ANVISA Open Data |
+| Fabricantes/titulares registrados | **769** | ANVISA Open Data |
+| Princípios ativos únicos | **4.177** | ANVISA Open Data |
+| Classes terapêuticas | **486** | ANVISA Open Data |
+| Códigos CID-10 (categorias + subcategorias) | **~12.000** | DATASUS |
+
+---
 
 ## Instalação rápida
 
@@ -34,7 +52,7 @@ Nenhuma instalação necessária. Basta configurar o MCP no seu cliente e o `npx
 }
 ```
 
-Na primeira execução, o servidor baixa automaticamente a base ANVISA (~10 MB). Isso pode levar 1–2 minutos. Após o download, os dados ficam em cache local por 7 dias.
+Na primeira execução, o servidor baixa automaticamente a base ANVISA (~10 MB) e a tabela CID-10 (~1 MB). Isso pode levar 1–2 minutos. Após o download, os dados ficam em cache local.
 
 ---
 
@@ -67,7 +85,11 @@ Quais princípios ativos existem para hipertensão?
 ```
 
 ```text
-Liste os fabricantes de medicamentos biológicos registrados no Brasil
+Quais doenças têm código CID E11?
+```
+
+```text
+Me dê informações sobre asma (CID J45) e os medicamentos disponíveis no Brasil
 ```
 
 ---
@@ -75,22 +97,25 @@ Liste os fabricantes de medicamentos biológicos registrados no Brasil
 ## Fontes de dados
 
 | Fonte | Tipo | Dados |
-| ----- | ---- | ----- |
-| **ANVISA Open Data** | CSV oficial | ~43.000 medicamentos registrados |
+|-------|------|-------|
+| **ANVISA Open Data** | CSV oficial | 42.842 medicamentos registrados |
 | **CMED/ANVISA** | CSV oficial | Preços PF e PMC por estado |
 | **Bulário Eletrônico ANVISA** | API pública | Bulas em PDF (paciente e profissional) |
+| **DATASUS (CID-10)** | ZIP/CSV oficial | ~12.000 códigos de doenças e condições |
 | **consultaremedios.com.br** | Scraping seletivo¹ | Mapeamento condição → medicamentos |
 
 > ¹ Apenas páginas de categoria permitidas pelo `robots.txt`, com rate limit de 1 req/s e `User-Agent` identificado.
 
-Todos os dados principais são **abertos do governo federal** (ANVISA/CMED), de uso irrestrito.
+Todos os dados são **abertos do governo federal** (ANVISA/CMED/DATASUS), de uso irrestrito.
 
 ---
 
-## Ferramentas disponíveis (11)
+## Ferramentas disponíveis (13)
+
+### Medicamentos
 
 | Ferramenta | Descrição |
-| ---------- | --------- |
+|------------|-----------|
 | `search_medications` | Busca por nome, princípio ativo ou fabricante |
 | `get_medication_details` | Detalhes completos do medicamento + preços CMED |
 | `get_bula` | Bula oficial no Bulário Eletrônico ANVISA (PDF) |
@@ -103,6 +128,13 @@ Todos os dados principais são **abertos do governo federal** (ANVISA/CMED), de 
 | `check_anvisa_registration` | Verifica validade do registro ANVISA |
 | `list_therapeutic_classes` | Classes terapêuticas com contagem |
 
+### Doenças e CID-10
+
+| Ferramenta | Descrição |
+|------------|-----------|
+| `search_by_cid` | Busca doenças por código CID-10 (E11, J45) ou nome em português |
+| `get_cid_info` | Detalhes de uma doença: subcategorias e medicamentos relacionados na base ANVISA |
+
 ---
 
 ## Como funciona
@@ -113,15 +145,21 @@ Claude / Agente de IA
        ▼
   mcp-saude-br (este servidor)
        │
-  Store em memória (~43k medicamentos, 5 índices)
+  Store em memória (42k medicamentos + 12k CIDs, índices em Map)
        │
-  ┌────┼────────────────┐
-  │    │                │
-ANVISA  CMED         Bulário / consultaremedios
+  ┌────┼──────────────────┐
+  │    │                  │
+ANVISA  CMED         Bulário / CID-10 / consultaremedios
 (CSV)  (CSV)         (HTTP com cache de arquivo)
 ```
 
-**Estratégia de dados:** O CSV da ANVISA é carregado na inicialização e indexado em Maps para busca em menos de 1ms. Um cache de arquivo evita re-download a cada restart. Os preços CMED são carregados em background e enriquecem o store sem bloquear o servidor.
+**Estratégia de dados:** O CSV da ANVISA é carregado na inicialização e indexado em Maps para busca em menos de 1ms. A tabela CID-10 e os preços CMED são carregados em background sem bloquear o servidor. Caches locais evitam re-download a cada restart.
+
+| Dado | Cache | Atualização automática |
+|------|-------|------------------------|
+| ANVISA CSV | 7 dias | Semanal (3h da manhã) |
+| CMED preços | 30 dias | Mensal |
+| CID-10 | 1 ano | Anual |
 
 ---
 
@@ -151,6 +189,8 @@ npm run inspect
 { "medication_name": "Dipirona Sódica" }                      // get_bula
 { "condition": "diabetes" }                                   // get_medications_by_condition
 { "registration_number": "1.0002.0001.001-9" }               // check_anvisa_registration
+{ "query": "E11" }                                            // search_by_cid
+{ "code_or_name": "asma" }                                    // get_cid_info
 ```
 
 ### Scripts disponíveis
@@ -169,15 +209,17 @@ npm test            # Roda testes com Vitest
 ```text
 src/
 ├── index.ts              # Entry point
-├── server.ts             # Servidor MCP + registro das 11 tools
+├── server.ts             # Servidor MCP + registro das 13 tools
 ├── config.ts             # URLs, TTLs e paths centralizados
 ├── data/
-│   ├── types.ts          # Interfaces TypeScript (Medication, MedicationPrice…)
+│   ├── types.ts          # Interfaces TypeScript (Medication, Cid10Entry…)
 │   ├── store.ts          # Store em memória com 5 índices de busca
+│   ├── cid10-store.ts    # Store CID-10 com índices por código e descrição
 │   └── loader.ts         # Orquestra download + parse + refresh periódico
 ├── sources/
 │   ├── anvisa-csv.ts     # Download e parse do CSV ANVISA Open Data
 │   ├── cmed.ts           # Download e parse da tabela de preços CMED
+│   ├── cid10.ts          # Download e parse da tabela CID-10 (DATASUS)
 │   ├── bulario.ts        # Integração com o Bulário Eletrônico ANVISA
 │   └── consultaremedios.ts  # Scraping de categorias (condições médicas)
 ├── http/
@@ -193,7 +235,7 @@ src/
 ## Requisitos
 
 - Node.js >= 18
-- Conexão com a internet (para baixar dados ANVISA na primeira execução)
+- Conexão com a internet (para baixar dados na primeira execução)
 
 ---
 
@@ -205,8 +247,9 @@ MIT — veja [LICENSE](LICENSE).
 
 ## Aviso
 
-Este projeto não tem vínculo oficial com a ANVISA, CMED ou qualquer órgão do governo. Os dados são obtidos de fontes públicas e podem estar desatualizados em relação ao portal oficial. Para decisões clínicas, consulte sempre um profissional de saúde e verifique as fontes originais:
+Este projeto não tem vínculo oficial com a ANVISA, CMED, DATASUS ou qualquer órgão do governo. Os dados são obtidos de fontes públicas abertas e podem estar defasados em relação aos portais oficiais. Para decisões clínicas, consulte sempre um profissional de saúde e verifique as fontes originais:
 
 - [ANVISA Open Data](https://dados.anvisa.gov.br)
 - [Bulário Eletrônico ANVISA](https://consultas.anvisa.gov.br/#/bulario)
 - [CMED — Preços de Medicamentos](https://www.gov.br/anvisa/pt-br/assuntos/medicamentos/cmed/precos)
+- [CID-10 DATASUS](http://www2.datasus.gov.br/cid10/V2008/download.htm)
