@@ -115,6 +115,22 @@ export interface ConditionMedicationsMap {
   lastUpdated: Date;
 }
 
+/** Entrada da tabela CID-10 (Classificação Internacional de Doenças) */
+export interface Cid10Entry {
+  /** Código CID-10 — 3 chars para categorias (ex: E11), 5 chars para subcategorias (ex: E11.0) */
+  code: string;
+  /** Descrição completa em português */
+  description: string;
+  /** Descrição abreviada */
+  descriptionAbbrev?: string;
+  /** true se for subcategoria (ex: E11.0), false se for categoria (ex: E11) */
+  isSubcategory: boolean;
+  /** Código da categoria pai (apenas subcategorias) */
+  parentCode?: string;
+  /** Entrada excluída/descontinuada */
+  excluded?: boolean;
+}
+
 /** Estatísticas do data store */
 export interface StoreStats {
   totalMedications: number;

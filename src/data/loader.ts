@@ -1,6 +1,8 @@
 import { isLocalCsvFresh, downloadAnvisaCsv, parseAnvisaCsv } from '../sources/anvisa-csv.js';
 import { loadCmedPrices } from '../sources/cmed.js';
+import { loadCid10 } from '../sources/cid10.js';
 import { medicationStore } from './store.js';
+import { cid10Store } from './cid10-store.js';
 
 /**
  * Orquestra o carregamento completo dos dados:
@@ -24,7 +26,17 @@ export async function loadAllData(): Promise<void> {
     throw error; // Sem dados ANVISA o servidor não pode funcionar
   }
 
-  // ── Fase 2: CMED preços (background, não-bloqueante) ──────────
+  // ── Fase 2: CID-10 (background, não-bloqueante) ───────────────
+  loadCid10()
+    .then(entries => {
+      if (entries.length > 0) cid10Store.load(entries);
+    })
+    .catch(err => {
+      console.error('[Loader] Aviso: falha ao carregar tabela CID-10:', err.message);
+      console.error('[Loader] Funcionalidades CID-10 indisponíveis.');
+    });
+
+  // ── Fase 3: CMED preços (background, não-bloqueante) ──────────
   loadCmedPrices()
     .then(priceMap => {
       if (priceMap.size > 0) {

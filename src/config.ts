@@ -70,6 +70,14 @@ export const CONFIG = {
     CR_RATE_PER_SEC: 1,
   },
 
+  CID10: {
+    // Tabela CID-10 oficial DATASUS — muda raramente (1x por vários anos)
+    ZIP_URL: 'http://www2.datasus.gov.br/cid10/V2008/CID10CSV.ZIP',
+    LOCAL_DIR: path.join(DATA_DIR, 'cid10'),
+    LOCAL_JSON: path.join(DATA_DIR, 'cid10', 'cid10.json'),
+    MAX_AGE_MS: 365 * 24 * 60 * 60 * 1000, // 1 ano
+  },
+
   SEARCH: {
     DEFAULT_LIMIT: 10,
     MAX_LIMIT: 100,

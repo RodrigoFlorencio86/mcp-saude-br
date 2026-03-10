@@ -1,0 +1,22 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:api.consultaremedios.com.br)",
+      "WebFetch(domain:consultaremedios.com.br)",
+      "Bash(npm install:*)",
+      "Bash(node -e \"import\\(''zod''\\).then\\(\\({z}\\) => { const err = new z.ZodError\\([]\\); console.log\\(Object.getOwnPropertyNames\\(Object.getPrototypeOf\\(err\\)\\)\\); }\\)\")",
+      "Bash(node -e \"import\\(''zod''\\).then\\(\\({z}\\) => { try { z.string\\(\\).min\\(5\\).parse\\(''x''\\) } catch\\(e\\) { console.log\\(JSON.stringify\\(e, null, 2\\).slice\\(0, 500\\)\\) } }\\)\")",
+      "Bash(node -e \"import\\(''zod''\\).then\\(\\({z}\\) => { try { z.string\\(\\).min\\(5\\).parse\\(''x''\\) } catch\\(e\\) { console.log\\(Object.keys\\(e\\)\\); console.log\\(e.issues ? JSON.stringify\\(e.issues\\) : ''no issues''\\); } }\\)\")",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(node dist/index.js)",
+      "Bash(curl -sk -o /dev/null -w \"%{http_code}\" \"https://dados.anvisa.gov.br/dados/MEDICAMENTOS.zip\")",
+      "WebFetch(domain:www.gov.br)",
+      "WebSearch",
+      "WebFetch(domain:dados.gov.br)",
+      "Bash(node -e \":*)",
+      "Bash(iconv -f latin1 -t utf8)",
+      "Bash(npm view:*)"
+    ]
+  }
+}

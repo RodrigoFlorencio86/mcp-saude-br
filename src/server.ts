@@ -8,6 +8,7 @@ import {
 import { z } from 'zod';
 import { CONFIG } from './config.js';
 import { medicationStore } from './data/store.js';
+import { cid10Store } from './data/cid10-store.js';
 import { getBula } from './sources/bulario.js';
 import { getMedicationsByCondition } from './sources/consultaremedios.js';
 import {
@@ -80,6 +81,17 @@ const schemas = {
 
   list_therapeutic_classes: z.object({
     limit: z.number().int().min(1).max(200).default(50),
+  }),
+
+  search_by_cid: z.object({
+    query: z.string().min(1).max(100).describe('Código CID-10 (ex: E11) ou nome da doença (ex: diabetes)'),
+    include_subcategories: z.boolean().default(false).describe('Incluir subcategorias na busca'),
+    limit: z.number().int().min(1).max(50).default(10),
+  }),
+
+  get_cid_info: z.object({
+    code_or_name: z.string().min(1).max(100).describe('Código CID-10 (ex: E11) ou nome da doença'),
+    show_medications: z.boolean().default(true).describe('Buscar medicamentos relacionados na base ANVISA'),
   }),
 };
 
@@ -215,6 +227,31 @@ const TOOL_DEFINITIONS: Tool[] = [
       properties: {
         limit: { type: 'number', default: 50, minimum: 1, maximum: 200 },
       },
+    },
+  },
+  {
+    name: 'search_by_cid',
+    description: 'Busca doenças e condições médicas pela tabela CID-10 (Classificação Internacional de Doenças). Aceita código CID (ex: E11, J45) ou nome da doença em português (ex: diabetes, asma, hipertensão).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Código CID-10 (ex: E11) ou nome da doença em português (ex: diabetes, asma)' },
+        include_subcategories: { type: 'boolean', default: false, description: 'Incluir subcategorias detalhadas na resposta' },
+        limit: { type: 'number', default: 10, minimum: 1, maximum: 50 },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'get_cid_info',
+    description: 'Retorna informações detalhadas sobre uma doença pelo código CID-10 ou nome, incluindo subcategorias e medicamentos relacionados registrados na ANVISA.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        code_or_name: { type: 'string', description: 'Código CID-10 (ex: E11) ou nome da doença (ex: diabetes mellitus)' },
+        show_medications: { type: 'boolean', default: true, description: 'Buscar medicamentos relacionados na base ANVISA' },
+      },
+      required: ['code_or_name'],
     },
   },
 ];
@@ -586,6 +623,137 @@ async function handleListTherapeuticClasses(args: unknown): Promise<ToolResult> 
   };
 }
 
+async function handleSearchByCid(args: unknown): Promise<ToolResult> {
+  const { query, include_subcategories, limit } = schemas.search_by_cid.parse(args);
+
+  if (!cid10Store.isLoaded) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Tabela CID-10 ainda sendo carregada. Aguarde alguns instantes e tente novamente.',
+      }],
+    };
+  }
+
+  let results = cid10Store.search(query, limit * 3);
+
+  if (!include_subcategories) {
+    const onlyCategories = results.filter(e => !e.isSubcategory);
+    // Se filtrar zerar os resultados, mantém todos
+    if (onlyCategories.length > 0) results = onlyCategories;
+  }
+
+  results = results.slice(0, limit);
+
+  if (results.length === 0) {
+    return {
+      content: [{
+        type: 'text',
+        text: `Nenhuma doença/condição encontrada para "${query}" na tabela CID-10.\n\nTente:\n- Código completo: E11, J45, I10\n- Nome em português: diabetes, asma, hipertensão`,
+      }],
+    };
+  }
+
+  const lines = [`## CID-10 — Resultados para "${query}"`, ''];
+
+  for (const entry of results) {
+    const subcatLabel = entry.isSubcategory ? ` *(subcategoria de ${entry.parentCode})*` : '';
+    lines.push(`- **${entry.code}** — ${entry.description}${subcatLabel}`);
+  }
+
+  lines.push('');
+  lines.push(`*Use \`get_cid_info\` com um código específico para detalhes e medicamentos relacionados.*`);
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] };
+}
+
+async function handleGetCidInfo(args: unknown): Promise<ToolResult> {
+  const { code_or_name, show_medications } = schemas.get_cid_info.parse(args);
+
+  if (!cid10Store.isLoaded) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Tabela CID-10 ainda sendo carregada. Aguarde alguns instantes.',
+      }],
+    };
+  }
+
+  // Tenta lookup exato por código primeiro, depois busca
+  const trimmed = code_or_name.trim().toUpperCase();
+  let entry = cid10Store.getByCode(trimmed);
+
+  if (!entry) {
+    const results = cid10Store.search(code_or_name, 1);
+    entry = results[0];
+  }
+
+  if (!entry) {
+    return {
+      content: [{
+        type: 'text',
+        text: `"${code_or_name}" não encontrado na tabela CID-10. Use \`search_by_cid\` para encontrar o código correto.`,
+      }],
+    };
+  }
+
+  const lines = [
+    `## CID-10 ${entry.code} — ${entry.description}`,
+    '',
+    `- **Código:** ${entry.code}`,
+    `- **Tipo:** ${entry.isSubcategory ? `Subcategoria (pertence a ${entry.parentCode})` : 'Categoria principal'}`,
+    entry.descriptionAbbrev ? `- **Abreviação:** ${entry.descriptionAbbrev}` : '',
+  ].filter(l => l !== '');
+
+  // Subcategorias (apenas para categorias principais)
+  if (!entry.isSubcategory) {
+    const subcats = cid10Store.getSubcategories(entry.code);
+    if (subcats.length > 0) {
+      lines.push('', `### Subcategorias (${subcats.length})`);
+      for (const sub of subcats.slice(0, 10)) {
+        lines.push(`- **${sub.code}** — ${sub.description}`);
+      }
+      if (subcats.length > 10) lines.push(`- *... e mais ${subcats.length - 10} subcategorias*`);
+    }
+  }
+
+  // Medicamentos relacionados via busca ANVISA
+  if (show_medications && medicationStore.isReady) {
+    const keywords = cid10Store.getSearchKeywordsForEntry(entry);
+
+    if (keywords.length > 0) {
+      const searchQuery = keywords.slice(0, 3).join(' ');
+      const meds = medicationStore.search(searchQuery, 15);
+      const validMeds = meds.filter(m => m.registrationStatus === 'VALIDO');
+
+      if (validMeds.length > 0) {
+        lines.push('', `### Medicamentos relacionados na base ANVISA`);
+        lines.push(`*Busca por: "${keywords.slice(0, 3).join(', ')}"*`);
+        lines.push('');
+
+        // Agrupar por categoria
+        const byCategory = new Map<string, typeof validMeds>();
+        for (const med of validMeds.slice(0, 12)) {
+          if (!byCategory.has(med.category)) byCategory.set(med.category, []);
+          byCategory.get(med.category)!.push(med);
+        }
+
+        for (const [cat, items] of byCategory) {
+          lines.push(`**${cat}:**`);
+          for (const med of items.slice(0, 4)) {
+            lines.push(`- ${med.nameRaw} (${med.manufacturerRaw})`);
+          }
+        }
+
+        lines.push('');
+        lines.push('*Use `search_by_active_ingredient` ou `search_medications` para busca mais específica.*');
+      }
+    }
+  }
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] };
+}
+
 // ============================================================
 // Criação e configuração do servidor MCP
 // ============================================================
@@ -618,6 +786,8 @@ export function createServer(): Server {
         case 'get_medications_by_condition':return await handleGetMedicationsByCondition(rawArgs);
         case 'check_anvisa_registration':   return await handleCheckAnvisaRegistration(rawArgs);
         case 'list_therapeutic_classes':    return await handleListTherapeuticClasses(rawArgs);
+        case 'search_by_cid':               return await handleSearchByCid(rawArgs);
+        case 'get_cid_info':                return await handleGetCidInfo(rawArgs);
         default:
           throw unknownToolError(name);
       }
