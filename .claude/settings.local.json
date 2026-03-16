@@ -18,7 +18,8 @@
       "Bash(iconv -f latin1 -t utf8)",
       "Bash(npm view:*)",
       "Bash(npm version:*)",
-      "Bash(npm publish:*)"
+      "Bash(npm publish:*)",
+      "WebFetch(domain:dados.anvisa.gov.br)"
     ]
   }
 }
