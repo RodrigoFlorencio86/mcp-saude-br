@@ -19,7 +19,16 @@
       "Bash(npm view:*)",
       "Bash(npm version:*)",
       "Bash(npm publish:*)",
-      "WebFetch(domain:dados.anvisa.gov.br)"
+      "WebFetch(domain:dados.anvisa.gov.br)",
+      "WebFetch(domain:support.claude.com)",
+      "Bash(python3 -c \"import openpyxl; print\\(''ok''\\)\")",
+      "Bash(python -c \"import openpyxl; print\\(''ok''\\)\")",
+      "Bash(python3 -c \":*)",
+      "Bash(python -c \":*)",
+      "mcp__saude-br__get_manufacturer_medications",
+      "Bash(python enrich_contacts.py)",
+      "mcp__saude-br__get_medication_details",
+      "Bash(python -c \"import json; d=json.load\\(open\\(''GenSearch - Contatos Enriquecidos.json'', encoding=''utf-8''\\)\\); print\\(''Contatos:'', len\\(d[''contatos'']\\)\\); c=d[''contatos''][0]; print\\(''Primeiro:'', c[''empresa'']\\); a=c.get\\(''anvisa'',{}\\); print\\(''Refs:'', a.get\\(''medicamentos_referencia_ativos'',[]\\)\\); print\\(''Sims:'', a.get\\(''medicamentos_similares_notaveis'',[]\\)[:3]\\)\")"
     ]
   }
 }
