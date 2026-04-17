@@ -12,7 +12,7 @@ export const CONFIG = {
 
   ANVISA: {
     // URL correta do CSV direto (sem ZIP) — verificada em março/2026
-    CSV_URL: 'https://dados.anvisa.gov.br/dados/DADOS_ABERTOS_MEDICAMENTOS.csv',
+    CSV_URL: 'https://dados.anvisa.gov.br/DADOS_ABERTOS_MEDICAMENTOS.csv',
     LOCAL_CSV: path.join(DATA_DIR, 'anvisa', 'DADOS_ABERTOS_MEDICAMENTOS.csv'),
     // Tempo máximo de vida do arquivo local antes de re-baixar (7 dias em ms)
     MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
@@ -22,7 +22,7 @@ export const CONFIG = {
 
   CMED: {
     // ANVISA também publica tabela de preços no portal de dados abertos
-    DIRECT_URL: 'https://dados.anvisa.gov.br/dados/TA_PRECOS_MEDICAMENTOS.csv',
+    DIRECT_URL: 'https://dados.anvisa.gov.br/TA_PRECOS_MEDICAMENTOS.csv',
     // Fallback: página da CMED (scraping para encontrar link mais atual)
     PAGE_URL: 'https://www.gov.br/anvisa/pt-br/assuntos/medicamentos/cmed/precos',
     LOCAL_FILE: path.join(DATA_DIR, 'cmed', 'TA_PRECOS_MEDICAMENTOS.csv'),
