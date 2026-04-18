@@ -43,11 +43,15 @@ interface DatasetSpec {
   validate: () => Promise<number>;
   /**
    * Quando true, falha do download/validação NÃO aborta o release —
-   * apenas loga warning. Útil para datasets cujo upstream é instável
-   * mas não são críticos (ex: CID-10 raramente muda; cliente cai pra
-   * cache local de 1 ano).
+   * apenas loga warning. Útil para datasets opcionais.
    */
   optional?: boolean;
+  /**
+   * Caminho de um asset estático no repositório usado como fallback
+   * quando o download da fonte original falha. Usado por datasets
+   * cujo upstream é instável mas cujos dados mudam raramente (CID-10).
+   */
+  staticFallbackPath?: string;
 }
 
 const datasets: DatasetSpec[] = [
@@ -73,13 +77,14 @@ const datasets: DatasetSpec[] = [
   },
   {
     // CID-10 (V2008) muda raramente; o servidor DATASUS é instável.
-    // Marcado como opcional — falha não bloqueia o release.
+    // Se o download falhar, o script copia o asset estático do repo
+    // (assets/CID10CSV.zip) para sempre gerar um release completo.
     name: 'CID-10',
     sourceUrl: CONFIG.CID10.ZIP_URL,
     localPath: path.join(CONFIG.CID10.LOCAL_DIR, 'CID10CSV.ZIP'),
     outputName: 'cid10.zip',
     minCount: 1,
-    optional: true,
+    staticFallbackPath: CONFIG.CID10.STATIC_ASSET_PATH,
     validate: async () => {
       const zipPath = path.join(CONFIG.CID10.LOCAL_DIR, 'CID10CSV.ZIP');
       const stat = fs.statSync(zipPath);
@@ -147,7 +152,19 @@ async function main() {
   for (const ds of datasets) {
     try {
       console.log(`\n[${ds.name}] Iniciando...`);
-      await downloadRaw(ds.sourceUrl, ds.localPath);
+      try {
+        await downloadRaw(ds.sourceUrl, ds.localPath);
+      } catch (err) {
+        if (ds.staticFallbackPath && fs.existsSync(ds.staticFallbackPath)) {
+          console.log(`  ⚠ Download falhou (${(err as Error).message}). Usando asset estático: ${ds.staticFallbackPath}`);
+          fs.mkdirSync(path.dirname(ds.localPath), { recursive: true });
+          fs.copyFileSync(ds.staticFallbackPath, ds.localPath);
+          const sizeMB = (fs.statSync(ds.localPath).size / 1024 / 1024).toFixed(2);
+          console.log(`  ✓ Copiado do asset estático (${sizeMB} MB)`);
+        } else {
+          throw err;
+        }
+      }
 
       console.log(`[${ds.name}] Validando...`);
       const count = await ds.validate();

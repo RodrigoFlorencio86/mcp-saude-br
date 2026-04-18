@@ -77,8 +77,11 @@ function parseSubcategorias(content: string): Cid10Entry[] {
 async function downloadAndParse(): Promise<Cid10Entry[]> {
   fs.mkdirSync(LOCAL_DIR, { recursive: true });
 
-  // Tenta primeiro o cache pré-validado no GitHub Release
+  // Ordem de tentativas: release GitHub → fonte original DATASUS → asset
+  // estático commitado (última linha de defesa — CID-10 V2008 muda 1x por
+  // vários anos, então ZIP bundled permanece válido por muito tempo).
   let downloaded = false;
+
   try {
     console.error(`[CID-10] Tentando cache do release: ${CONFIG.CID10.RELEASE_URL}`);
     const zipBuf = await downloadGzipped(CONFIG.CID10.RELEASE_URL, 60_000);
@@ -86,20 +89,34 @@ async function downloadAndParse(): Promise<Cid10Entry[]> {
     console.error(`[CID-10] ZIP obtido via release.`);
     downloaded = true;
   } catch (err) {
-    console.error(`[CID-10] Release indisponível (${(err as Error).message}). Caindo para fonte original...`);
+    console.error(`[CID-10] Release indisponível (${(err as Error).message}).`);
   }
 
   if (!downloaded) {
-    const url = CONFIG.CID10.ZIP_URL;
-    console.error(`[CID-10] Baixando tabela de ${url} ...`);
+    try {
+      const url = CONFIG.CID10.ZIP_URL;
+      console.error(`[CID-10] Tentando fonte DATASUS: ${url}`);
+      const response = await httpClient.get(url, {
+        responseType: 'arraybuffer',
+        timeout: 60_000,
+      });
+      fs.writeFileSync(LOCAL_ZIP, Buffer.from(response.data as ArrayBuffer));
+      console.error(`[CID-10] ZIP salvo em ${LOCAL_ZIP}`);
+      downloaded = true;
+    } catch (err) {
+      console.error(`[CID-10] Fonte DATASUS indisponível (${(err as Error).message}).`);
+    }
+  }
 
-    const response = await httpClient.get(url, {
-      responseType: 'arraybuffer',
-      timeout: 60_000,
-    });
-
-    fs.writeFileSync(LOCAL_ZIP, Buffer.from(response.data as ArrayBuffer));
-    console.error(`[CID-10] ZIP salvo em ${LOCAL_ZIP}`);
+  if (!downloaded) {
+    // Fallback final: asset commitado no repositório
+    const staticPath = CONFIG.CID10.STATIC_ASSET_PATH;
+    if (fs.existsSync(staticPath)) {
+      console.error(`[CID-10] Usando ZIP estático commitado: ${staticPath}`);
+      fs.copyFileSync(staticPath, LOCAL_ZIP);
+    } else {
+      throw new Error(`CID-10 indisponível: release, DATASUS e asset estático falharam.`);
+    }
   }
 
   const zip = new AdmZip(LOCAL_ZIP);

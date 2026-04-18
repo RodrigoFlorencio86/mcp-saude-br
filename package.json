@@ -9,6 +9,7 @@
   },
   "files": [
     "dist/",
+    "assets/",
     "README.md"
   ],
   "keywords": [

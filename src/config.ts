@@ -91,7 +91,10 @@ export const CONFIG = {
 
   CID10: {
     RELEASE_URL: `${RELEASE_BASE}/cid10.zip.gz`,
-    ZIP_URL: 'http://www2.datasus.gov.br/cid10/V2008/CID10CSV.ZIP',
+    ZIP_URL: 'http://www2.datasus.gov.br/cid10/V2008/downloads/CID10CSV.zip',
+    // Fallback estático committado no repo — usado pelo script CI e como
+    // último recurso pelo cliente se release e fonte original falharem.
+    STATIC_ASSET_PATH: path.join(__dirname, '..', 'assets', 'CID10CSV.zip'),
     LOCAL_DIR: path.join(DATA_DIR, 'cid10'),
     LOCAL_JSON: path.join(DATA_DIR, 'cid10', 'cid10.json'),
     MAX_AGE_MS: 365 * 24 * 60 * 60 * 1000,
