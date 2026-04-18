@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse';
 import { CONFIG } from '../config.js';
-import { httpClient, downloadGzipped } from '../http/client.js';
+import { httpClient, downloadGzipped, readGzippedFile } from '../http/client.js';
 import { anvisaQueue } from '../http/queue.js';
 import type { MedicationPrice } from '../data/types.js';
 import { normalize } from '../utils/text.js';
@@ -54,51 +54,60 @@ async function findCmedDownloadUrl(): Promise<string | null> {
 async function downloadCmedFile(): Promise<void> {
   fs.mkdirSync(path.dirname(CONFIG.CMED.LOCAL_FILE), { recursive: true });
 
-  // Tentar primeiro o cache pré-validado no GitHub Release
+  // 1. GitHub Release (rápido, atualizado semanalmente)
   try {
-    console.error(`[CMED] Tentando cache do release: ${CONFIG.CMED.RELEASE_URL}`);
+    console.error(`[CMED] Tentando GitHub Release: ${CONFIG.CMED.RELEASE_URL}`);
     const csvBuf = await downloadGzipped(CONFIG.CMED.RELEASE_URL, 60_000);
     fs.writeFileSync(CONFIG.CMED.LOCAL_FILE, csvBuf);
-    const sizeMB = (csvBuf.byteLength / 1024 / 1024).toFixed(1);
-    console.error(`[CMED] Tabela obtida via release (${sizeMB} MB).`);
+    console.error(`[CMED] ✓ Obtido via release (${(csvBuf.byteLength / 1024 / 1024).toFixed(1)} MB).`);
     return;
   } catch (err) {
-    console.error(`[CMED] Release indisponível (${(err as Error).message}). Caindo para fonte original...`);
+    console.error(`[CMED] Release indisponível (${(err as Error).message}).`);
   }
 
-  // Tentar URL direta do portal de dados abertos ANVISA
-  let url: string | null = CONFIG.CMED.DIRECT_URL;
-
+  // 2. URL direta da ANVISA
   try {
+    const url = CONFIG.CMED.DIRECT_URL;
     console.error(`[CMED] Tentando URL direta: ${url}`);
     const response = await anvisaQueue.add(() =>
-      httpClient.get<ArrayBuffer>(url as string, { responseType: 'arraybuffer' })
+      httpClient.get<ArrayBuffer>(url, { responseType: 'arraybuffer' })
     );
     if (response && response.data) {
-      fs.mkdirSync(path.dirname(CONFIG.CMED.LOCAL_FILE), { recursive: true });
       fs.writeFileSync(CONFIG.CMED.LOCAL_FILE, Buffer.from(response.data));
-      console.error('[CMED] Tabela de preços baixada via URL direta.');
+      console.error('[CMED] ✓ Obtido via URL direta.');
       return;
     }
   } catch {
     console.error('[CMED] URL direta falhou. Tentando scraping da página CMED...');
   }
 
-  // Fallback: scraping da página
-  url = await findCmedDownloadUrl();
-  if (!url) {
-    throw new Error('Não foi possível encontrar o link de download da tabela CMED.');
+  // 3. Scraping da página CMED (link pode mudar de nome a cada publicação)
+  try {
+    const scrapedUrl = await findCmedDownloadUrl();
+    if (scrapedUrl) {
+      console.error(`[CMED] Tentando link descoberto via scraping: ${scrapedUrl}`);
+      const response = await anvisaQueue.add(() =>
+        httpClient.get<ArrayBuffer>(scrapedUrl, { responseType: 'arraybuffer' })
+      );
+      if (response) {
+        fs.writeFileSync(CONFIG.CMED.LOCAL_FILE, Buffer.from(response.data));
+        console.error('[CMED] ✓ Obtido via scraping.');
+        return;
+      }
+    }
+  } catch (err) {
+    console.error(`[CMED] Scraping falhou (${(err as Error).message}).`);
   }
 
-  console.error(`[CMED] Baixando tabela de preços: ${url}`);
-  const response = await anvisaQueue.add(() =>
-    httpClient.get<ArrayBuffer>(url, { responseType: 'arraybuffer' })
-  );
-  if (!response) throw new Error('Download CMED retornou vazio');
+  // 4. Asset estático committed no repo — último recurso pra sempre ter dado
+  if (fs.existsSync(CONFIG.CMED.STATIC_ASSET_PATH)) {
+    const data = readGzippedFile(CONFIG.CMED.STATIC_ASSET_PATH);
+    fs.writeFileSync(CONFIG.CMED.LOCAL_FILE, data);
+    console.error(`[CMED] ⚠ Usando snapshot estático committed no repo (${(data.byteLength / 1024 / 1024).toFixed(1)} MB). Preços podem estar defasados.`);
+    return;
+  }
 
-  fs.mkdirSync(path.dirname(CONFIG.CMED.LOCAL_FILE), { recursive: true });
-  fs.writeFileSync(CONFIG.CMED.LOCAL_FILE, Buffer.from(response.data));
-  console.error('[CMED] Tabela baixada com sucesso.');
+  throw new Error('CMED indisponível: release, URL direta, scraping e asset estático falharam.');
 }
 
 /**

@@ -19,6 +19,7 @@ export const CONFIG = {
   ANVISA: {
     RELEASE_URL: `${RELEASE_BASE}/anvisa-medicamentos.csv.gz`,
     CSV_URL: 'https://dados.anvisa.gov.br/DADOS_ABERTOS_MEDICAMENTOS.csv',
+    STATIC_ASSET_PATH: path.join(__dirname, '..', 'assets', 'anvisa-medicamentos.csv.gz'),
     LOCAL_CSV: path.join(DATA_DIR, 'anvisa', 'DADOS_ABERTOS_MEDICAMENTOS.csv'),
     MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
     ENCODING: 'latin1' as BufferEncoding,
@@ -28,6 +29,7 @@ export const CONFIG = {
     RELEASE_URL: `${RELEASE_BASE}/cmed-precos.csv.gz`,
     DIRECT_URL: 'https://dados.anvisa.gov.br/TA_PRECOS_MEDICAMENTOS.csv',
     PAGE_URL: 'https://www.gov.br/anvisa/pt-br/assuntos/medicamentos/cmed/precos',
+    STATIC_ASSET_PATH: path.join(__dirname, '..', 'assets', 'cmed-precos.csv.gz'),
     LOCAL_FILE: path.join(DATA_DIR, 'cmed', 'TA_PRECOS_MEDICAMENTOS.csv'),
     MAX_AGE_MS: 30 * 24 * 60 * 60 * 1000,
   },
@@ -35,6 +37,7 @@ export const CONFIG = {
   ANVISA_CANNABIS: {
     RELEASE_URL: `${RELEASE_BASE}/anvisa-cannabis.csv.gz`,
     CSV_URL: 'https://dados.anvisa.gov.br/CONSULTAS/PRODUTOS/TA_CONSULTA_PRODUTOS_CANNABIS.CSV',
+    STATIC_ASSET_PATH: path.join(__dirname, '..', 'assets', 'anvisa-cannabis.csv.gz'),
     LOCAL_CSV: path.join(DATA_DIR, 'anvisa-products', 'cannabis.csv'),
     MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
     ENCODING: 'latin1' as BufferEncoding,
@@ -43,6 +46,7 @@ export const CONFIG = {
   ANVISA_ALIMENTOS: {
     RELEASE_URL: `${RELEASE_BASE}/anvisa-alimentos.csv.gz`,
     CSV_URL: 'https://dados.anvisa.gov.br/CONSULTAS/PRODUTOS/TA_CONSULTA_ALIMENTOS.CSV',
+    STATIC_ASSET_PATH: path.join(__dirname, '..', 'assets', 'anvisa-alimentos.csv.gz'),
     LOCAL_CSV: path.join(DATA_DIR, 'anvisa-products', 'alimentos.csv'),
     MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
     ENCODING: 'latin1' as BufferEncoding,
@@ -108,6 +112,6 @@ export const CONFIG = {
 
   SERVER: {
     NAME: 'mcp-saude-br',
-    VERSION: '1.2.2',
+    VERSION: '1.2.3',
   },
 } as const;

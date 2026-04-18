@@ -144,17 +144,25 @@ Os números abaixo refletem o estado dos datasets oficiais em **abril de 2026**.
 
 ## Como os dados chegam até você
 
-O MCP usa uma estratégia de **cache em camadas** para ser rápido e resistente a instabilidades dos servidores do governo:
+O MCP usa uma estratégia de **cache em 3 camadas** para ser rápido e resistente a instabilidades dos servidores do governo. **O servidor sempre tem dados pra mostrar**, mesmo se ANVISA estiver fora do ar:
 
 ```text
-1. GitHub Release (CDN, semanal) — primário
+1. GitHub Release (CDN, atualizado semanalmente) ─── primário, dados frescos
          ↓ falhou?
-2. Fontes oficiais (ANVISA/DATASUS) — fallback
+2. Fonte oficial ANVISA/DATASUS (ao vivo) ────────── fallback online
          ↓ falhou?
-3. Asset estático no pacote (CID-10) — último recurso
+3. Snapshot commitado no pacote npm ──────────────── garantia offline
+   (atualizado a cada release minor — pode estar
+   alguns dias/semanas defasado, mas funciona sempre)
 ```
 
-**Por que isso importa:** em abril de 2026, a ANVISA reorganizou o servidor de dados abertos e removeu o prefixo `/dados/` de todos os CSVs. Versões anteriores do MCP quebraram na inicialização. Com o cache via GitHub Release, esse tipo de mudança só afeta o CI (que republica semanalmente) — o cliente continua funcionando até o próximo ciclo.
+**Por que isso importa:** em abril de 2026, a ANVISA reorganizou o servidor de dados abertos e removeu o prefixo `/dados/` de todos os CSVs. Versões anteriores do MCP quebraram na inicialização. Com a estratégia em 3 camadas:
+
+- **Caso normal:** baixa do GitHub Release (rápido, sempre fresco até a semana atual).
+- **ANVISA fora do ar:** usa o release que já está cacheado.
+- **GitHub fora do ar:** usa o snapshot commitado no próprio pacote npm — você instalou, então tem os dados.
+
+Quando o snapshot estático é usado, o servidor avisa nos logs: `⚠ Usando snapshot estático committed no repo (X MB). Dados podem estar defasados.`
 
 ### Arquitetura de atualização
 

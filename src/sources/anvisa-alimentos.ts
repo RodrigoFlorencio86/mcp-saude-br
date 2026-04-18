@@ -1,8 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { CONFIG } from '../config.js';
-import { httpClient, downloadGzipped } from '../http/client.js';
-import { anvisaQueue } from '../http/queue.js';
+import { fetchDataset } from '../http/client.js';
 import type { Supplement } from '../data/types.js';
 import { normalize, parseAnvisaDate, parseRegistrationStatus } from '../utils/text.js';
 
@@ -19,28 +18,15 @@ export async function downloadAlimentosCsv(): Promise<void> {
   console.error('[Alimentos] Baixando suplementos/alimentos ANVISA...');
   fs.mkdirSync(path.dirname(CONFIG.ANVISA_ALIMENTOS.LOCAL_CSV), { recursive: true });
 
-  try {
-    console.error(`[Alimentos] Tentando cache do release: ${CONFIG.ANVISA_ALIMENTOS.RELEASE_URL}`);
-    const csvBuf = await downloadGzipped(CONFIG.ANVISA_ALIMENTOS.RELEASE_URL, 120_000);
-    fs.writeFileSync(CONFIG.ANVISA_ALIMENTOS.LOCAL_CSV, csvBuf);
-    console.error(`[Alimentos] CSV obtido via release (${(csvBuf.byteLength / 1024 / 1024).toFixed(1)} MB).`);
-    return;
-  } catch (err) {
-    console.error(`[Alimentos] Release indisponível (${(err as Error).message}). Caindo para fonte original...`);
-  }
-
-  console.error(`[Alimentos] URL: ${CONFIG.ANVISA_ALIMENTOS.CSV_URL}`);
-  const csvData = await anvisaQueue.add(async () => {
-    const response = await httpClient.get<ArrayBuffer>(CONFIG.ANVISA_ALIMENTOS.CSV_URL, {
-      responseType: 'arraybuffer',
-      timeout: 120_000,
-    });
-    return response.data;
+  const { data } = await fetchDataset({
+    label: 'Alimentos',
+    releaseUrl: CONFIG.ANVISA_ALIMENTOS.RELEASE_URL,
+    sourceUrl: CONFIG.ANVISA_ALIMENTOS.CSV_URL,
+    staticAssetPath: CONFIG.ANVISA_ALIMENTOS.STATIC_ASSET_PATH,
+    timeoutMs: 120_000,
   });
 
-  if (!csvData) throw new Error('Download Alimentos retornou vazio');
-  fs.writeFileSync(CONFIG.ANVISA_ALIMENTOS.LOCAL_CSV, Buffer.from(csvData));
-  console.error(`[Alimentos] CSV baixado da fonte original (${(Buffer.from(csvData).byteLength / 1024 / 1024).toFixed(1)} MB).`);
+  fs.writeFileSync(CONFIG.ANVISA_ALIMENTOS.LOCAL_CSV, data);
 }
 
 /**

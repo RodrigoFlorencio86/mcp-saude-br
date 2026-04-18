@@ -1,0 +1,50 @@
+{
+  "generatedAt": "2026-04-18T00:46:59.200Z",
+  "datasets": [
+    {
+      "name": "ANVISA medicamentos",
+      "file": "anvisa-medicamentos.csv.gz",
+      "sourceUrl": "https://dados.anvisa.gov.br/DADOS_ABERTOS_MEDICAMENTOS.csv",
+      "recordCount": 42965,
+      "sizeRaw": 8228278,
+      "sizeGz": 2017429,
+      "sha256": "d05b09962dd96f0c1abf44eeec8a35dcddb544366ff5a1b844769aa3716bc8ae"
+    },
+    {
+      "name": "CMED preços",
+      "file": "cmed-precos.csv.gz",
+      "sourceUrl": "https://dados.anvisa.gov.br/TA_PRECOS_MEDICAMENTOS.csv",
+      "recordCount": 53353,
+      "sizeRaw": 10670762,
+      "sizeGz": 2205584,
+      "sha256": "ffdcb067983437811e0bae83844143f1c592db83b5f20f488bd216f068d39189"
+    },
+    {
+      "name": "CID-10",
+      "file": "cid10.zip.gz",
+      "sourceUrl": "http://www2.datasus.gov.br/cid10/V2008/downloads/CID10CSV.zip",
+      "recordCount": 1,
+      "sizeRaw": 306066,
+      "sizeGz": 305948,
+      "sha256": "cc5c29d3cf5570d3b0d0a475263ab08d1da0b63fbf0abfa3436e608a3df4c658"
+    },
+    {
+      "name": "Cannabis",
+      "file": "anvisa-cannabis.csv.gz",
+      "sourceUrl": "https://dados.anvisa.gov.br/CONSULTAS/PRODUTOS/TA_CONSULTA_PRODUTOS_CANNABIS.CSV",
+      "recordCount": 62,
+      "sizeRaw": 18092,
+      "sizeGz": 3497,
+      "sha256": "e97465ff731c748069611f6afd4ccad78101d10c5de2559757e1e15f130a840f"
+    },
+    {
+      "name": "Alimentos/Suplementos",
+      "file": "anvisa-alimentos.csv.gz",
+      "sourceUrl": "https://dados.anvisa.gov.br/CONSULTAS/PRODUTOS/TA_CONSULTA_ALIMENTOS.CSV",
+      "recordCount": 58717,
+      "sizeRaw": 27363237,
+      "sizeGz": 5751287,
+      "sha256": "502fe65b0950e2804c818ced3744310c0b4e418c58f584af6ac2a5cbbb66e48a"
+    }
+  ]
+}

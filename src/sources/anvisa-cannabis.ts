@@ -2,8 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse';
 import { CONFIG } from '../config.js';
-import { httpClient, downloadGzipped } from '../http/client.js';
-import { anvisaQueue } from '../http/queue.js';
+import { fetchDataset } from '../http/client.js';
 import type { CannabisProduct } from '../data/types.js';
 import { normalize, parseAnvisaDate, parseRegistrationStatus } from '../utils/text.js';
 
@@ -20,27 +19,14 @@ export async function downloadCannabisCsv(): Promise<void> {
   console.error('[Cannabis] Baixando produtos cannabis ANVISA...');
   fs.mkdirSync(path.dirname(CONFIG.ANVISA_CANNABIS.LOCAL_CSV), { recursive: true });
 
-  try {
-    console.error(`[Cannabis] Tentando cache do release: ${CONFIG.ANVISA_CANNABIS.RELEASE_URL}`);
-    const csvBuf = await downloadGzipped(CONFIG.ANVISA_CANNABIS.RELEASE_URL, 60_000);
-    fs.writeFileSync(CONFIG.ANVISA_CANNABIS.LOCAL_CSV, csvBuf);
-    console.error(`[Cannabis] CSV obtido via release (${(csvBuf.byteLength / 1024).toFixed(1)} KB).`);
-    return;
-  } catch (err) {
-    console.error(`[Cannabis] Release indisponível (${(err as Error).message}). Caindo para fonte original...`);
-  }
-
-  console.error(`[Cannabis] URL: ${CONFIG.ANVISA_CANNABIS.CSV_URL}`);
-  const csvData = await anvisaQueue.add(async () => {
-    const response = await httpClient.get<ArrayBuffer>(CONFIG.ANVISA_CANNABIS.CSV_URL, {
-      responseType: 'arraybuffer',
-    });
-    return response.data;
+  const { data } = await fetchDataset({
+    label: 'Cannabis',
+    releaseUrl: CONFIG.ANVISA_CANNABIS.RELEASE_URL,
+    sourceUrl: CONFIG.ANVISA_CANNABIS.CSV_URL,
+    staticAssetPath: CONFIG.ANVISA_CANNABIS.STATIC_ASSET_PATH,
   });
 
-  if (!csvData) throw new Error('Download Cannabis retornou vazio');
-  fs.writeFileSync(CONFIG.ANVISA_CANNABIS.LOCAL_CSV, Buffer.from(csvData));
-  console.error(`[Cannabis] CSV baixado da fonte original (${(Buffer.from(csvData).byteLength / 1024).toFixed(1)} KB).`);
+  fs.writeFileSync(CONFIG.ANVISA_CANNABIS.LOCAL_CSV, data);
 }
 
 /**

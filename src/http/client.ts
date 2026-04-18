@@ -1,4 +1,5 @@
 import https from 'https';
+import fs from 'fs';
 import zlib from 'zlib';
 import axios from 'axios';
 import type { AxiosInstance, AxiosError } from 'axios';
@@ -81,4 +82,72 @@ export async function downloadGzipped(url: string, timeoutMs?: number): Promise<
   });
   const compressed = Buffer.from(response.data);
   return zlib.gunzipSync(compressed);
+}
+
+/**
+ * Lê e descomprime um arquivo .gz local (asset estático commitado).
+ * Usado como último fallback quando release e fonte original falham.
+ */
+export function readGzippedFile(filePath: string): Buffer {
+  return zlib.gunzipSync(fs.readFileSync(filePath));
+}
+
+export interface FetchDatasetOpts {
+  /** Nome do dataset para logs (ex: "ANVISA medicamentos") */
+  label: string;
+  /** URL do GitHub Release (gzipado) — primeira tentativa */
+  releaseUrl: string;
+  /** URL canônica da fonte original (CSV cru, sem gzip) */
+  sourceUrl: string;
+  /**
+   * Caminho do asset estático commitado no repo (gzipado).
+   * Usado se release e source falharem. Garante que sempre tenha
+   * dado pra mostrar (mesmo que defasado).
+   */
+  staticAssetPath: string;
+  /** Timeout do download remoto em ms */
+  timeoutMs?: number;
+}
+
+/**
+ * Busca um dataset com 3 camadas de fallback:
+ *   1. GitHub Release (rápido, atualizado semanalmente)
+ *   2. Fonte original (ao vivo)
+ *   3. Asset estático committed no repo (snapshot que vai junto no npm)
+ *
+ * Retorna o conteúdo CSV/ZIP cru (Buffer) e o nome da fonte usada.
+ * Lança erro só se TODAS as 3 tentativas falharem.
+ */
+export async function fetchDataset(opts: FetchDatasetOpts): Promise<{ data: Buffer; source: 'release' | 'original' | 'static' }> {
+  const { label, releaseUrl, sourceUrl, staticAssetPath, timeoutMs = 60_000 } = opts;
+
+  try {
+    console.error(`[${label}] Tentando GitHub Release: ${releaseUrl}`);
+    const data = await downloadGzipped(releaseUrl, timeoutMs);
+    console.error(`[${label}] ✓ Obtido via release (${(data.byteLength / 1024 / 1024).toFixed(2)} MB).`);
+    return { data, source: 'release' };
+  } catch (err) {
+    console.error(`[${label}] Release indisponível (${(err as Error).message}).`);
+  }
+
+  try {
+    console.error(`[${label}] Tentando fonte original: ${sourceUrl}`);
+    const response = await httpClient.get<ArrayBuffer>(sourceUrl, {
+      responseType: 'arraybuffer',
+      timeout: timeoutMs,
+    });
+    const data = Buffer.from(response.data);
+    console.error(`[${label}] ✓ Obtido da fonte original (${(data.byteLength / 1024 / 1024).toFixed(2)} MB).`);
+    return { data, source: 'original' };
+  } catch (err) {
+    console.error(`[${label}] Fonte original indisponível (${(err as Error).message}).`);
+  }
+
+  if (fs.existsSync(staticAssetPath)) {
+    const data = readGzippedFile(staticAssetPath);
+    console.error(`[${label}] ⚠ Usando snapshot estático committed no repo (${(data.byteLength / 1024 / 1024).toFixed(2)} MB). Dados podem estar defasados — atualize quando possível.`);
+    return { data, source: 'static' };
+  }
+
+  throw new Error(`[${label}] Nenhuma fonte disponível: release, fonte original e asset estático falharam.`);
 }
