@@ -1,0 +1,82 @@
+name: Build data release
+
+# Re-publica semanalmente os CSVs ANVISA/CMED/DATASUS já validados como
+# GitHub Release. O cliente do MCP baixa daqui (rápido + isolado de mudanças
+# no servidor da ANVISA), com fallback para as URLs originais.
+
+on:
+  schedule:
+    # Toda segunda-feira às 03:00 UTC (~00:00 BRT)
+    - cron: '0 3 * * 1'
+  workflow_dispatch: # permite trigger manual via UI
+
+permissions:
+  contents: write
+  issues: write
+
+concurrency:
+  group: build-data
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build TypeScript (sources are imported by the script)
+        run: npm run build
+
+      - name: Build data release
+        id: build
+        run: npm run build-release
+
+      - name: List artifacts
+        run: ls -lh release-output/
+
+      - name: Compute release tag
+        id: tag
+        run: echo "tag=data-$(date -u +%Y-%m-%d)" >> "$GITHUB_OUTPUT"
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          # Apaga release antiga com a mesma tag (idempotente em caso de re-run)
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            --title "Data snapshot $TAG" \
+            --notes "Snapshot semanal dos dados ANVISA, CMED, DATASUS, Cannabis e Suplementos. Gerado automaticamente em $(date -u +'%Y-%m-%d %H:%M UTC')." \
+            release-output/*
+
+      - name: Update 'latest' alias
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ steps.tag.outputs.tag }}"
+          # GitHub usa 'latest' implicitamente para a release mais recente —
+          # marcamos explicitamente para garantir que /releases/latest/download/ resolva aqui.
+          gh release edit "$TAG" --latest
+
+      - name: Open issue on failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue create \
+            --title "Build data release falhou — $(date -u +%Y-%m-%d)" \
+            --body "O workflow [build-data](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) falhou. Verifique se a ANVISA mudou URLs ou formato dos CSVs." \
+            --label bug || true

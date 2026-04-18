@@ -9,6 +9,8 @@ import { z } from 'zod';
 import { CONFIG } from './config.js';
 import { medicationStore } from './data/store.js';
 import { cid10Store } from './data/cid10-store.js';
+import { cannabisStore } from './data/cannabis-store.js';
+import { supplementsStore } from './data/supplements-store.js';
 import { getBula } from './sources/bulario.js';
 import { getMedicationsByCondition } from './sources/consultaremedios.js';
 import {
@@ -92,6 +94,35 @@ const schemas = {
   get_cid_info: z.object({
     code_or_name: z.string().min(1).max(100).describe('Código CID-10 (ex: E11) ou nome da doença'),
     show_medications: z.boolean().default(true).describe('Buscar medicamentos relacionados na base ANVISA'),
+  }),
+
+  search_cannabis_products: z.object({
+    query: z.string().max(200).optional().describe('Nome do produto, princípio ativo ou fabricante (opcional — sem query lista todos)'),
+    manufacturer: z.string().optional().describe('Filtrar por fabricante'),
+    active_only: z.boolean().default(false).describe('Mostrar apenas registros válidos'),
+    limit: z.number().int().min(1).max(100).default(50),
+  }),
+
+  list_cannabis_manufacturers: z.object({
+    active_only: z.boolean().default(false),
+  }),
+
+  search_supplements: z.object({
+    query: z.string().min(2).max(200).describe('Nome do produto, marca ou fabricante (ex: "whey", "vitamina C")'),
+    manufacturer: z.string().optional().describe('Filtrar por fabricante'),
+    active_only: z.boolean().default(true),
+    limit: z.number().int().min(1).max(100).default(20),
+  }),
+
+  get_supplement_details: z.object({
+    registration_number: z.string().optional().describe('Número de registro/notificação ANVISA do suplemento'),
+    name: z.string().optional().describe('Nome do produto (alternativa ao registro)'),
+  }).refine(d => d.registration_number || d.name, { message: 'Informe registration_number ou name' }),
+
+  list_supplement_manufacturers: z.object({
+    filter: z.string().optional().describe('Filtrar fabricantes por nome (substring)'),
+    active_only: z.boolean().default(true),
+    limit: z.number().int().min(1).max(500).default(50),
   }),
 };
 
@@ -252,6 +283,66 @@ const TOOL_DEFINITIONS: Tool[] = [
         show_medications: { type: 'boolean', default: true, description: 'Buscar medicamentos relacionados na base ANVISA' },
       },
       required: ['code_or_name'],
+    },
+  },
+  {
+    name: 'search_cannabis_products',
+    description: 'Busca produtos à base de cannabis (canabidiol etc.) regulamentados pela ANVISA. Retorna nome, fabricante, CNPJ, princípio ativo e situação do registro. Sem query, lista todos os produtos disponíveis.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Nome do produto, princípio ativo ou fabricante (opcional)' },
+        manufacturer: { type: 'string', description: 'Filtrar por fabricante específico' },
+        active_only: { type: 'boolean', default: false, description: 'Apenas registros válidos' },
+        limit: { type: 'number', default: 50, minimum: 1, maximum: 100 },
+      },
+    },
+  },
+  {
+    name: 'list_cannabis_manufacturers',
+    description: 'Lista todos os fabricantes/empresas que possuem produtos cannabis registrados na ANVISA, com contagem de produtos por fabricante.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        active_only: { type: 'boolean', default: false, description: 'Apenas fabricantes com produtos válidos' },
+      },
+    },
+  },
+  {
+    name: 'search_supplements',
+    description: 'Busca suplementos alimentares (vitaminas, minerais, proteínas, suplementos esportivos) registrados/notificados na ANVISA. Busca por nome do produto, marca comercial ou fabricante.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Nome do produto, marca (ex: "whey", "vitamina C") ou termo de busca' },
+        manufacturer: { type: 'string', description: 'Filtrar por fabricante' },
+        active_only: { type: 'boolean', default: true, description: 'Apenas registros ativos' },
+        limit: { type: 'number', default: 20, minimum: 1, maximum: 100 },
+      },
+      required: ['query'],
+    },
+  },
+  {
+    name: 'get_supplement_details',
+    description: 'Retorna detalhes de um suplemento alimentar específico: fabricante, CNPJ, marcas associadas, categoria, situação, vencimento e alegações funcionais. Buscar por número de registro ou nome.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        registration_number: { type: 'string', description: 'Número de registro/notificação ANVISA' },
+        name: { type: 'string', description: 'Nome do produto (alternativa ao registro)' },
+      },
+    },
+  },
+  {
+    name: 'list_supplement_manufacturers',
+    description: 'Lista fabricantes de suplementos alimentares registrados na ANVISA, ordenados por quantidade de produtos. Suporta filtro por substring no nome.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        filter: { type: 'string', description: 'Filtrar por substring do nome do fabricante' },
+        active_only: { type: 'boolean', default: true, description: 'Apenas fabricantes com produtos ativos' },
+        limit: { type: 'number', default: 50, minimum: 1, maximum: 500 },
+      },
     },
   },
 ];
@@ -754,6 +845,162 @@ async function handleGetCidInfo(args: unknown): Promise<ToolResult> {
   return { content: [{ type: 'text', text: lines.join('\n') }] };
 }
 
+async function handleSearchCannabisProducts(args: unknown): Promise<ToolResult> {
+  const { query, manufacturer, active_only, limit } = schemas.search_cannabis_products.parse(args);
+
+  if (!cannabisStore.isLoaded) {
+    return { content: [{ type: 'text', text: 'Base de produtos cannabis ainda sendo carregada. Tente novamente em alguns segundos.' }] };
+  }
+
+  let results = cannabisStore.search(query, Math.min(limit * 3, 200));
+  if (manufacturer) {
+    const m = normalize(manufacturer);
+    results = results.filter(p => p.manufacturer.includes(m));
+  }
+  if (active_only) {
+    results = results.filter(p => p.registrationStatus === 'VALIDO');
+  }
+  results = results.slice(0, limit);
+
+  if (results.length === 0) {
+    return { content: [{ type: 'text', text: `Nenhum produto cannabis encontrado para "${query ?? ''}".` }] };
+  }
+
+  const lines = results.map((p, i) =>
+    `${i + 1}. **${p.nameRaw}**\n   - Fabricante: ${p.manufacturerRaw}${p.manufacturerCnpj ? ` (CNPJ ${p.manufacturerCnpj})` : ''}\n   - Princípio ativo: ${p.activeIngredientRaw || 'N/D'}\n   - Registro: ${p.registrationNumber} (${p.registrationStatusRaw || p.registrationStatus})\n   - Vencimento: ${formatDateBR(p.registrationExpiry)}`
+  );
+
+  const header = query
+    ? `**${results.length} produto(s) cannabis encontrado(s) para "${query}":**`
+    : `**${results.length} produto(s) cannabis (de ${cannabisStore.size} total):**`;
+
+  return { content: [{ type: 'text', text: `${header}\n\n${lines.join('\n\n')}` }] };
+}
+
+async function handleListCannabisManufacturers(args: unknown): Promise<ToolResult> {
+  const { active_only } = schemas.list_cannabis_manufacturers.parse(args);
+
+  if (!cannabisStore.isLoaded) {
+    return { content: [{ type: 'text', text: 'Base de produtos cannabis ainda sendo carregada.' }] };
+  }
+
+  let manufacturers = cannabisStore.listManufacturers();
+  if (active_only) manufacturers = manufacturers.filter(m => m.activeCount > 0);
+
+  if (manufacturers.length === 0) {
+    return { content: [{ type: 'text', text: 'Nenhum fabricante de produtos cannabis encontrado.' }] };
+  }
+
+  const lines = manufacturers.map((m, i) =>
+    `${i + 1}. **${m.nameRaw}** — ${m.productCount} produto(s) (${m.activeCount} válido(s))`
+  );
+
+  return {
+    content: [{
+      type: 'text',
+      text: `**${manufacturers.length} fabricante(s) de produtos cannabis na ANVISA:**\n\n${lines.join('\n')}`,
+    }],
+  };
+}
+
+async function handleSearchSupplements(args: unknown): Promise<ToolResult> {
+  const { query, manufacturer, active_only, limit } = schemas.search_supplements.parse(args);
+
+  if (!supplementsStore.isLoaded) {
+    return { content: [{ type: 'text', text: 'Base de suplementos ainda sendo carregada. Tente novamente em alguns segundos.' }] };
+  }
+
+  let results = supplementsStore.search(query, Math.min(limit * 3, 300));
+  if (manufacturer) {
+    const m = normalize(manufacturer);
+    results = results.filter(s => s.manufacturer.includes(m));
+  }
+  if (active_only) {
+    results = results.filter(s => s.registrationStatus === 'VALIDO');
+  }
+  results = results.slice(0, limit);
+
+  if (results.length === 0) {
+    return { content: [{ type: 'text', text: `Nenhum suplemento encontrado para "${query}".` }] };
+  }
+
+  const lines = results.map((s, i) => {
+    const brandsTxt = s.brands.length > 0 ? `\n   - Marcas: ${s.brands.slice(0, 6).join(', ')}${s.brands.length > 6 ? '…' : ''}` : '';
+    return `${i + 1}. **${truncate(s.nameRaw, 120)}**\n   - Fabricante: ${s.manufacturerRaw}${brandsTxt}\n   - Categoria: ${s.category || 'N/D'}\n   - Registro: ${s.registrationNumber} (${s.registrationStatusRaw || s.registrationStatus})`;
+  });
+
+  return {
+    content: [{
+      type: 'text',
+      text: `**${results.length} suplemento(s) encontrado(s) para "${query}":**\n\n${lines.join('\n\n')}`,
+    }],
+  };
+}
+
+async function handleGetSupplementDetails(args: unknown): Promise<ToolResult> {
+  const { registration_number, name } = schemas.get_supplement_details.parse(args);
+
+  if (!supplementsStore.isLoaded) {
+    return { content: [{ type: 'text', text: 'Base de suplementos ainda sendo carregada.' }] };
+  }
+
+  let supp = registration_number ? supplementsStore.getByRegistration(registration_number) : undefined;
+  if (!supp && name) {
+    const results = supplementsStore.search(name, 1);
+    supp = results[0];
+  }
+
+  if (!supp) {
+    return { content: [{ type: 'text', text: `Suplemento não encontrado para "${registration_number ?? name}".` }] };
+  }
+
+  const lines = [
+    `## ${supp.nameRaw}`,
+    '',
+    `- **Fabricante:** ${supp.manufacturerRaw}`,
+    `- **CNPJ:** ${supp.manufacturerCnpj || 'N/D'}`,
+    `- **Categoria:** ${supp.category || 'N/D'}`,
+    `- **Marcas:** ${supp.brands.length > 0 ? supp.brands.join(', ') : 'N/D'}`,
+    `- **Número de registro:** ${supp.registrationNumber}`,
+    `- **Status:** ${supp.registrationStatusRaw || supp.registrationStatus}`,
+    `- **Vencimento do registro:** ${formatDateBR(supp.registrationExpiry)}`,
+  ];
+
+  if (supp.functionalClaims) {
+    lines.push('', '### Alegações funcionais');
+    lines.push(truncate(supp.functionalClaims, 1500));
+  }
+
+  return { content: [{ type: 'text', text: lines.join('\n') }] };
+}
+
+async function handleListSupplementManufacturers(args: unknown): Promise<ToolResult> {
+  const { filter, active_only, limit } = schemas.list_supplement_manufacturers.parse(args);
+
+  if (!supplementsStore.isLoaded) {
+    return { content: [{ type: 'text', text: 'Base de suplementos ainda sendo carregada.' }] };
+  }
+
+  const manufacturers = supplementsStore.listManufacturers(filter, limit, active_only);
+
+  if (manufacturers.length === 0) {
+    const msg = filter
+      ? `Nenhum fabricante de suplementos encontrado para "${filter}".`
+      : 'Nenhum fabricante de suplementos encontrado.';
+    return { content: [{ type: 'text', text: msg }] };
+  }
+
+  const lines = manufacturers.map((m, i) =>
+    `${i + 1}. **${m.nameRaw}** — ${m.productCount} produto(s) (${m.activeCount} ativo(s))`
+  );
+
+  const header = filter
+    ? `**${manufacturers.length} fabricante(s) de suplementos para "${filter}":**`
+    : `**${manufacturers.length} fabricante(s) de suplementos (top por volume):**`;
+
+  return { content: [{ type: 'text', text: `${header}\n\n${lines.join('\n')}` }] };
+}
+
 // ============================================================
 // Criação e configuração do servidor MCP
 // ============================================================
@@ -788,6 +1035,11 @@ export function createServer(): Server {
         case 'list_therapeutic_classes':    return await handleListTherapeuticClasses(rawArgs);
         case 'search_by_cid':               return await handleSearchByCid(rawArgs);
         case 'get_cid_info':                return await handleGetCidInfo(rawArgs);
+        case 'search_cannabis_products':    return await handleSearchCannabisProducts(rawArgs);
+        case 'list_cannabis_manufacturers': return await handleListCannabisManufacturers(rawArgs);
+        case 'search_supplements':          return await handleSearchSupplements(rawArgs);
+        case 'get_supplement_details':      return await handleGetSupplementDetails(rawArgs);
+        case 'list_supplement_manufacturers':return await handleListSupplementManufacturers(rawArgs);
         default:
           throw unknownToolError(name);
       }

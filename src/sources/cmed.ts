@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse';
 import { CONFIG } from '../config.js';
-import { httpClient } from '../http/client.js';
+import { httpClient, downloadGzipped } from '../http/client.js';
 import { anvisaQueue } from '../http/queue.js';
 import type { MedicationPrice } from '../data/types.js';
 import { normalize } from '../utils/text.js';
@@ -52,7 +52,21 @@ async function findCmedDownloadUrl(): Promise<string | null> {
  * caso falhe, faz scraping da página CMED para encontrar link atual
  */
 async function downloadCmedFile(): Promise<void> {
-  // Tentar URL direta do portal de dados abertos ANVISA primeiro
+  fs.mkdirSync(path.dirname(CONFIG.CMED.LOCAL_FILE), { recursive: true });
+
+  // Tentar primeiro o cache pré-validado no GitHub Release
+  try {
+    console.error(`[CMED] Tentando cache do release: ${CONFIG.CMED.RELEASE_URL}`);
+    const csvBuf = await downloadGzipped(CONFIG.CMED.RELEASE_URL, 60_000);
+    fs.writeFileSync(CONFIG.CMED.LOCAL_FILE, csvBuf);
+    const sizeMB = (csvBuf.byteLength / 1024 / 1024).toFixed(1);
+    console.error(`[CMED] Tabela obtida via release (${sizeMB} MB).`);
+    return;
+  } catch (err) {
+    console.error(`[CMED] Release indisponível (${(err as Error).message}). Caindo para fonte original...`);
+  }
+
+  // Tentar URL direta do portal de dados abertos ANVISA
   let url: string | null = CONFIG.CMED.DIRECT_URL;
 
   try {

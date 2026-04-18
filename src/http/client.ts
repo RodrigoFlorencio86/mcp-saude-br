@@ -1,4 +1,5 @@
 import https from 'https';
+import zlib from 'zlib';
 import axios from 'axios';
 import type { AxiosInstance, AxiosError } from 'axios';
 import { CONFIG } from '../config.js';
@@ -65,3 +66,19 @@ function createAxiosInstance(): AxiosInstance {
 }
 
 export const httpClient = createAxiosInstance();
+
+/**
+ * Baixa um arquivo gzipado e retorna o conteúdo descomprimido como Buffer.
+ * Usado para o cache pré-validado dos CSVs no GitHub Release.
+ */
+export async function downloadGzipped(url: string, timeoutMs?: number): Promise<Buffer> {
+  const response = await httpClient.get<ArrayBuffer>(url, {
+    responseType: 'arraybuffer',
+    timeout: timeoutMs ?? CONFIG.HTTP.TIMEOUT_MS,
+    // Impede o axios/Node de descomprimir baseado no Content-Encoding —
+    // o GitHub serve o arquivo .gz cru, não como transport encoding.
+    decompress: false,
+  });
+  const compressed = Buffer.from(response.data);
+  return zlib.gunzipSync(compressed);
+}

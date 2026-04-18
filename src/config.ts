@@ -7,26 +7,45 @@ export const DATA_DIR = process.env.DATA_DIR
   ? path.resolve(process.env.DATA_DIR)
   : path.resolve(__dirname, '../data');
 
+// Cache pré-validado dos CSVs publicado semanalmente via GitHub Actions.
+// Cliente baixa daqui primeiro (CDN rápido + isolado de mudanças do servidor ANVISA);
+// se falhar, cai pros endpoints originais.
+const RELEASE_BASE = 'https://github.com/RodrigoFlorencio86/mcp-saude-br/releases/latest/download';
+
 export const CONFIG = {
   DATA_DIR,
+  RELEASE_BASE,
 
   ANVISA: {
-    // URL correta do CSV direto (sem ZIP) — verificada em março/2026
+    RELEASE_URL: `${RELEASE_BASE}/anvisa-medicamentos.csv.gz`,
     CSV_URL: 'https://dados.anvisa.gov.br/DADOS_ABERTOS_MEDICAMENTOS.csv',
     LOCAL_CSV: path.join(DATA_DIR, 'anvisa', 'DADOS_ABERTOS_MEDICAMENTOS.csv'),
-    // Tempo máximo de vida do arquivo local antes de re-baixar (7 dias em ms)
     MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
-    // Encoding do CSV da ANVISA
     ENCODING: 'latin1' as BufferEncoding,
   },
 
   CMED: {
-    // ANVISA também publica tabela de preços no portal de dados abertos
+    RELEASE_URL: `${RELEASE_BASE}/cmed-precos.csv.gz`,
     DIRECT_URL: 'https://dados.anvisa.gov.br/TA_PRECOS_MEDICAMENTOS.csv',
-    // Fallback: página da CMED (scraping para encontrar link mais atual)
     PAGE_URL: 'https://www.gov.br/anvisa/pt-br/assuntos/medicamentos/cmed/precos',
     LOCAL_FILE: path.join(DATA_DIR, 'cmed', 'TA_PRECOS_MEDICAMENTOS.csv'),
-    MAX_AGE_MS: 30 * 24 * 60 * 60 * 1000, // 30 dias
+    MAX_AGE_MS: 30 * 24 * 60 * 60 * 1000,
+  },
+
+  ANVISA_CANNABIS: {
+    RELEASE_URL: `${RELEASE_BASE}/anvisa-cannabis.csv.gz`,
+    CSV_URL: 'https://dados.anvisa.gov.br/CONSULTAS/PRODUTOS/TA_CONSULTA_PRODUTOS_CANNABIS.CSV',
+    LOCAL_CSV: path.join(DATA_DIR, 'anvisa-products', 'cannabis.csv'),
+    MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
+    ENCODING: 'latin1' as BufferEncoding,
+  },
+
+  ANVISA_ALIMENTOS: {
+    RELEASE_URL: `${RELEASE_BASE}/anvisa-alimentos.csv.gz`,
+    CSV_URL: 'https://dados.anvisa.gov.br/CONSULTAS/PRODUTOS/TA_CONSULTA_ALIMENTOS.CSV',
+    LOCAL_CSV: path.join(DATA_DIR, 'anvisa-products', 'alimentos.csv'),
+    MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
+    ENCODING: 'latin1' as BufferEncoding,
   },
 
   BULARIO: {
@@ -71,11 +90,11 @@ export const CONFIG = {
   },
 
   CID10: {
-    // Tabela CID-10 oficial DATASUS — muda raramente (1x por vários anos)
+    RELEASE_URL: `${RELEASE_BASE}/cid10.zip.gz`,
     ZIP_URL: 'http://www2.datasus.gov.br/cid10/V2008/CID10CSV.ZIP',
     LOCAL_DIR: path.join(DATA_DIR, 'cid10'),
     LOCAL_JSON: path.join(DATA_DIR, 'cid10', 'cid10.json'),
-    MAX_AGE_MS: 365 * 24 * 60 * 60 * 1000, // 1 ano
+    MAX_AGE_MS: 365 * 24 * 60 * 60 * 1000,
   },
 
   SEARCH: {
@@ -86,6 +105,6 @@ export const CONFIG = {
 
   SERVER: {
     NAME: 'mcp-saude-br',
-    VERSION: '1.0.0',
+    VERSION: '1.2.0',
   },
 } as const;

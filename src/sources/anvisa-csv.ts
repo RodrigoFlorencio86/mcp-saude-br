@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { parse } from 'csv-parse';
 import { CONFIG } from '../config.js';
-import { httpClient } from '../http/client.js';
+import { httpClient, downloadGzipped } from '../http/client.js';
 import { anvisaQueue } from '../http/queue.js';
 import type { AnvisaRawRow, Medication } from '../data/types.js';
 import {
@@ -28,12 +28,26 @@ export function isLocalCsvFresh(): boolean {
 }
 
 /**
- * Baixa o CSV direto da ANVISA (sem ZIP)
+ * Baixa o CSV ANVISA. Tenta primeiro o cache pré-validado no GitHub Release
+ * (rápido + isolado de mudanças do servidor ANVISA); se falhar, cai pro CSV
+ * cru direto da ANVISA.
  */
 export async function downloadAnvisaCsv(): Promise<void> {
   console.error('[ANVISA] Baixando base de medicamentos...');
-  console.error(`[ANVISA] URL: ${CONFIG.ANVISA.CSV_URL}`);
+  fs.mkdirSync(path.dirname(CONFIG.ANVISA.LOCAL_CSV), { recursive: true });
 
+  try {
+    console.error(`[ANVISA] Tentando cache do release: ${CONFIG.ANVISA.RELEASE_URL}`);
+    const csvBuf = await downloadGzipped(CONFIG.ANVISA.RELEASE_URL, 60_000);
+    fs.writeFileSync(CONFIG.ANVISA.LOCAL_CSV, csvBuf);
+    const sizeMB = (csvBuf.byteLength / 1024 / 1024).toFixed(1);
+    console.error(`[ANVISA] CSV obtido via release (${sizeMB} MB).`);
+    return;
+  } catch (err) {
+    console.error(`[ANVISA] Release indisponível (${(err as Error).message}). Caindo para fonte original...`);
+  }
+
+  console.error(`[ANVISA] URL: ${CONFIG.ANVISA.CSV_URL}`);
   const csvData = await anvisaQueue.add(async () => {
     const response = await httpClient.get<ArrayBuffer>(CONFIG.ANVISA.CSV_URL, {
       responseType: 'arraybuffer',
@@ -43,13 +57,9 @@ export async function downloadAnvisaCsv(): Promise<void> {
 
   if (!csvData) throw new Error('Download retornou vazio');
 
-  // Garantir que o diretório existe
-  fs.mkdirSync(path.dirname(CONFIG.ANVISA.LOCAL_CSV), { recursive: true });
-
-  // Salvar CSV diretamente
   fs.writeFileSync(CONFIG.ANVISA.LOCAL_CSV, Buffer.from(csvData));
   const sizeMB = (Buffer.from(csvData).byteLength / 1024 / 1024).toFixed(1);
-  console.error(`[ANVISA] CSV baixado com sucesso (${sizeMB} MB).`);
+  console.error(`[ANVISA] CSV baixado da fonte original (${sizeMB} MB).`);
 }
 
 /**

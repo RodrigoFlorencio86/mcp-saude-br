@@ -131,6 +131,69 @@ export interface Cid10Entry {
   excluded?: boolean;
 }
 
+/**
+ * Produto à base de cannabis (canabidiol etc.) regulamentado pela ANVISA.
+ * Origem: TA_CONSULTA_PRODUTOS_CANNABIS.CSV (sem header, parse posicional).
+ */
+export interface CannabisProduct {
+  /** Número do processo administrativo */
+  processNumber: string;
+  /** Número de registro/notificação ANVISA */
+  registrationNumber: string;
+  /** Nome do produto (raw) */
+  nameRaw: string;
+  /** Nome normalizado para busca */
+  name: string;
+  /** Razão social do fabricante (raw) */
+  manufacturerRaw: string;
+  /** Fabricante normalizado */
+  manufacturer: string;
+  /** CNPJ do fabricante */
+  manufacturerCnpj: string;
+  /** Princípio ativo (ex: "canabidiol") raw */
+  activeIngredientRaw: string;
+  /** Princípio ativo normalizado */
+  activeIngredient: string;
+  /** Situação do registro */
+  registrationStatus: RegistrationStatus;
+  /** Texto bruto da situação para exibição */
+  registrationStatusRaw: string;
+  /** Data de vencimento do registro */
+  registrationExpiry?: Date;
+}
+
+/**
+ * Suplemento alimentar registrado/notificado na ANVISA.
+ * Origem: TA_CONSULTA_ALIMENTOS.CSV (com header).
+ */
+export interface Supplement {
+  /** Número de registro/notificação */
+  registrationNumber: string;
+  /** Nome do produto raw */
+  nameRaw: string;
+  /** Nome normalizado */
+  name: string;
+  /** Razão social do fabricante raw */
+  manufacturerRaw: string;
+  /** Fabricante normalizado */
+  manufacturer: string;
+  /** CNPJ */
+  manufacturerCnpj: string;
+  /** Marcas associadas (lista, podem ser múltiplas separadas por ;) */
+  brands: string[];
+  /** Marcas normalizadas para busca */
+  brandsNormalized: string[];
+  /** Categoria do produto (ex: "Suplementos alimentares") */
+  category: string;
+  /** Situação do registro */
+  registrationStatus: RegistrationStatus;
+  registrationStatusRaw: string;
+  /** Vencimento do registro (formato MMYYYY no CSV) */
+  registrationExpiry?: Date;
+  /** Alegações funcionais (texto longo) */
+  functionalClaims?: string;
+}
+
 /** Estatísticas do data store */
 export interface StoreStats {
   totalMedications: number;

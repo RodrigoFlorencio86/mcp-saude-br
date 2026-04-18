@@ -1,8 +1,20 @@
 import { isLocalCsvFresh, downloadAnvisaCsv, parseAnvisaCsv } from '../sources/anvisa-csv.js';
 import { loadCmedPrices } from '../sources/cmed.js';
 import { loadCid10 } from '../sources/cid10.js';
+import {
+  isLocalCannabisFresh,
+  downloadCannabisCsv,
+  parseCannabisCsv,
+} from '../sources/anvisa-cannabis.js';
+import {
+  isLocalAlimentosFresh,
+  downloadAlimentosCsv,
+  parseAlimentosCsv,
+} from '../sources/anvisa-alimentos.js';
 import { medicationStore } from './store.js';
 import { cid10Store } from './cid10-store.js';
+import { cannabisStore } from './cannabis-store.js';
+import { supplementsStore } from './supplements-store.js';
 
 /**
  * Orquestra o carregamento completo dos dados:
@@ -47,6 +59,42 @@ export async function loadAllData(): Promise<void> {
       console.error('[Loader] Aviso: falha ao carregar preços CMED:', err.message);
       console.error('[Loader] Servidor operacional, mas dados de preço indisponíveis.');
     });
+
+  // ── Fase 4: Cannabis (background, não-bloqueante) ─────────────
+  loadCannabisProducts()
+    .then(products => {
+      if (products.length > 0) cannabisStore.load(products);
+    })
+    .catch(err => {
+      console.error('[Loader] Aviso: falha ao carregar produtos cannabis:', err.message);
+    });
+
+  // ── Fase 5: Suplementos/Alimentos (background, não-bloqueante) ─
+  loadSupplements()
+    .then(supplements => {
+      if (supplements.length > 0) supplementsStore.load(supplements);
+    })
+    .catch(err => {
+      console.error('[Loader] Aviso: falha ao carregar suplementos:', err.message);
+    });
+}
+
+async function loadCannabisProducts() {
+  if (!isLocalCannabisFresh()) {
+    await downloadCannabisCsv();
+  } else {
+    console.error('[Cannabis] Usando cache local.');
+  }
+  return parseCannabisCsv();
+}
+
+async function loadSupplements() {
+  if (!isLocalAlimentosFresh()) {
+    await downloadAlimentosCsv();
+  } else {
+    console.error('[Alimentos] Usando cache local.');
+  }
+  return parseAlimentosCsv();
 }
 
 /**
@@ -60,14 +108,20 @@ export function scheduleRefreshes(): void {
 
   let daysSinceAnvisaRefresh = 0;
   let daysSinceCmedRefresh = 0;
+  let daysSinceCannabisRefresh = 0;
+  let daysSinceAlimentosRefresh = 0;
 
   // Guards para evitar refreshes concorrentes (protege contra overflow de timer)
   let anvisaRefreshing = false;
   let cmedRefreshing = false;
+  let cannabisRefreshing = false;
+  let alimentosRefreshing = false;
 
   setInterval(async () => {
     daysSinceAnvisaRefresh++;
     daysSinceCmedRefresh++;
+    daysSinceCannabisRefresh++;
+    daysSinceAlimentosRefresh++;
 
     // Refresh ANVISA a cada 7 dias, na hora 3 da manhã
     if (daysSinceAnvisaRefresh >= 7 && !anvisaRefreshing) {
@@ -100,6 +154,38 @@ export function scheduleRefreshes(): void {
         console.error('[Loader] Falha no refresh CMED:', err);
       } finally {
         cmedRefreshing = false;
+      }
+    }
+
+    // Refresh Cannabis a cada 7 dias
+    if (daysSinceCannabisRefresh >= 7 && !cannabisRefreshing) {
+      cannabisRefreshing = true;
+      daysSinceCannabisRefresh = 0;
+      console.error('[Loader] Refresh semanal Cannabis iniciado...');
+      try {
+        await downloadCannabisCsv();
+        const products = await parseCannabisCsv();
+        if (products.length > 0) cannabisStore.load(products);
+      } catch (err) {
+        console.error('[Loader] Falha no refresh Cannabis:', err);
+      } finally {
+        cannabisRefreshing = false;
+      }
+    }
+
+    // Refresh Alimentos a cada 7 dias
+    if (daysSinceAlimentosRefresh >= 7 && !alimentosRefreshing) {
+      alimentosRefreshing = true;
+      daysSinceAlimentosRefresh = 0;
+      console.error('[Loader] Refresh semanal Alimentos iniciado...');
+      try {
+        await downloadAlimentosCsv();
+        const supplements = await parseAlimentosCsv();
+        if (supplements.length > 0) supplementsStore.load(supplements);
+      } catch (err) {
+        console.error('[Loader] Falha no refresh Alimentos:', err);
+      } finally {
+        alimentosRefreshing = false;
       }
     }
   }, ONE_DAY_MS);

@@ -7,6 +7,9 @@ dist/
 # Dados baixados (CSV da ANVISA e CMED — grandes e regeneráveis automaticamente)
 /data/
 
+# Saída do build de release (gerada pelo CI, não comitada)
+/release-output/
+
 # Logs
 *.log
 npm-debug.log*

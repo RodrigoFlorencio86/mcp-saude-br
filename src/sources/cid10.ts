@@ -2,7 +2,7 @@ import path from 'path';
 import fs from 'fs';
 import AdmZip from 'adm-zip';
 import { parse } from 'csv-parse/sync';
-import { httpClient } from '../http/client.js';
+import { httpClient, downloadGzipped } from '../http/client.js';
 import { CONFIG } from '../config.js';
 import type { Cid10Entry } from '../data/types.js';
 
@@ -77,16 +77,30 @@ function parseSubcategorias(content: string): Cid10Entry[] {
 async function downloadAndParse(): Promise<Cid10Entry[]> {
   fs.mkdirSync(LOCAL_DIR, { recursive: true });
 
-  const url = CONFIG.CID10.ZIP_URL;
-  console.error(`[CID-10] Baixando tabela de ${url} ...`);
+  // Tenta primeiro o cache pré-validado no GitHub Release
+  let downloaded = false;
+  try {
+    console.error(`[CID-10] Tentando cache do release: ${CONFIG.CID10.RELEASE_URL}`);
+    const zipBuf = await downloadGzipped(CONFIG.CID10.RELEASE_URL, 60_000);
+    fs.writeFileSync(LOCAL_ZIP, zipBuf);
+    console.error(`[CID-10] ZIP obtido via release.`);
+    downloaded = true;
+  } catch (err) {
+    console.error(`[CID-10] Release indisponível (${(err as Error).message}). Caindo para fonte original...`);
+  }
 
-  const response = await httpClient.get(url, {
-    responseType: 'arraybuffer',
-    timeout: 60_000,
-  });
+  if (!downloaded) {
+    const url = CONFIG.CID10.ZIP_URL;
+    console.error(`[CID-10] Baixando tabela de ${url} ...`);
 
-  fs.writeFileSync(LOCAL_ZIP, Buffer.from(response.data as ArrayBuffer));
-  console.error(`[CID-10] ZIP salvo em ${LOCAL_ZIP}`);
+    const response = await httpClient.get(url, {
+      responseType: 'arraybuffer',
+      timeout: 60_000,
+    });
+
+    fs.writeFileSync(LOCAL_ZIP, Buffer.from(response.data as ArrayBuffer));
+    console.error(`[CID-10] ZIP salvo em ${LOCAL_ZIP}`);
+  }
 
   const zip = new AdmZip(LOCAL_ZIP);
 
