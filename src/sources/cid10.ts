@@ -33,45 +33,68 @@ function findEntryInZip(zip: AdmZip, nameParts: string[]): Buffer | null {
   return null;
 }
 
-function parseCategorias(content: string): Cid10Entry[] {
-  const records = parse(content, {
+/**
+ * Parse tolerante a dois schemas do CID-10 V2008:
+ * - Layout antigo (algumas distribuições): `CATSUB`/`SUBCAT` + `DESCR`
+ * - Layout atual (DATASUS V2008 oficial): `CAT`/`SUBCAT` + `DESCRICAO`
+ */
+function parseRecords(content: string): Record<string, string>[] {
+  return parse(content, {
     delimiter: ';',
     columns: true,
     skip_empty_lines: true,
     relax_quotes: true,
     skip_records_with_error: true,
   }) as Record<string, string>[];
+}
 
-  return records
-    .filter(r => r.CATSUB && r.DESCR)
-    .map(r => ({
-      code: r.CATSUB.trim(),
-      description: r.DESCR.trim(),
-      descriptionAbbrev: r.DESCRABREV?.trim(),
-      isSubcategory: false,
-      excluded: r.EXCLUIDA?.trim() === '1' || r.EXCLUIDA?.trim().toLowerCase() === 's',
-    }));
+function getDescription(r: Record<string, string>): string {
+  return (r.DESCRICAO ?? r.DESCR ?? '').trim();
+}
+
+function isExcluded(r: Record<string, string>): boolean {
+  const v = (r.EXCLUIDA ?? '').trim().toLowerCase();
+  return v === '1' || v === 's';
+}
+
+function parseCategorias(content: string): Cid10Entry[] {
+  return parseRecords(content)
+    .map(r => {
+      const code = (r.CAT ?? r.CATSUB ?? '').trim();
+      const description = getDescription(r);
+      if (!code || !description) return null;
+      return {
+        code,
+        description,
+        descriptionAbbrev: r.DESCRABREV?.trim(),
+        isSubcategory: false,
+        excluded: isExcluded(r),
+      } as Cid10Entry;
+    })
+    .filter((x): x is Cid10Entry => x !== null);
 }
 
 function parseSubcategorias(content: string): Cid10Entry[] {
-  const records = parse(content, {
-    delimiter: ';',
-    columns: true,
-    skip_empty_lines: true,
-    relax_quotes: true,
-    skip_records_with_error: true,
-  }) as Record<string, string>[];
-
-  return records
-    .filter(r => r.SUBCAT && r.DESCR)
-    .map(r => ({
-      code: r.SUBCAT.trim(),
-      description: r.DESCR.trim(),
-      descriptionAbbrev: r.DESCRABREV?.trim(),
-      isSubcategory: true,
-      parentCode: r.CATEG?.trim(),
-      excluded: r.EXCLUIDA?.trim() === '1' || r.EXCLUIDA?.trim().toLowerCase() === 's',
-    }));
+  return parseRecords(content)
+    .map(r => {
+      const rawCode = (r.SUBCAT ?? '').trim();
+      const description = getDescription(r);
+      if (!rawCode || !description) return null;
+      // SUBCAT vem como "E110" (4 chars sem ponto) — formato canônico é "E11.0"
+      const code = rawCode.length === 4 && /^[A-Z]\d{3}$/i.test(rawCode)
+        ? `${rawCode.slice(0, 3)}.${rawCode.slice(3)}`
+        : rawCode;
+      const parentCode = (r.CATEG ?? rawCode.slice(0, 3)).trim();
+      return {
+        code,
+        description,
+        descriptionAbbrev: r.DESCRABREV?.trim(),
+        isSubcategory: true,
+        parentCode,
+        excluded: isExcluded(r),
+      } as Cid10Entry;
+    })
+    .filter((x): x is Cid10Entry => x !== null);
 }
 
 async function downloadAndParse(): Promise<Cid10Entry[]> {

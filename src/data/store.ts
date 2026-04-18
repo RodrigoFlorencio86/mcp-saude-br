@@ -20,6 +20,7 @@ export class MedicationStore {
   private byTherapeuticClass = new Map<string, Set<number>>();
 
   private _ready = false;
+  private _failed = false;
   private _readyPromise: Promise<void>;
   private _resolveReady!: () => void;
   private _stats: Partial<StoreStats> = {};
@@ -30,13 +31,31 @@ export class MedicationStore {
     });
   }
 
-  /** Bloqueia até o store estar pronto */
-  async waitForReady(): Promise<void> {
-    return this._readyPromise;
+  /**
+   * Aguarda o store ficar pronto, com timeout. Retorna `true` se carregou,
+   * `false` se timeout ou se o load falhou. Tools devem checar o retorno
+   * antes de consultar o store.
+   */
+  async waitForReady(timeoutMs: number = 30_000): Promise<boolean> {
+    if (this._ready) return true;
+    if (this._failed) return false;
+    const timeout = new Promise<false>(resolve => setTimeout(() => resolve(false), timeoutMs));
+    const ready = this._readyPromise.then(() => this._ready);
+    return Promise.race([ready, timeout]);
   }
 
   get isReady(): boolean {
     return this._ready;
+  }
+
+  get hasFailed(): boolean {
+    return this._failed;
+  }
+
+  /** Sinaliza que o load do dataset falhou — tools respondem "indisponível". */
+  markFailed(): void {
+    this._failed = true;
+    this._resolveReady();
   }
 
   /** Carrega medicamentos e reconstrói todos os índices */

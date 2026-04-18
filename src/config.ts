@@ -108,6 +108,6 @@ export const CONFIG = {
 
   SERVER: {
     NAME: 'mcp-saude-br',
-    VERSION: '1.2.1',
+    VERSION: '1.2.2',
   },
 } as const;

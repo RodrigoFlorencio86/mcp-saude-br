@@ -17,28 +17,26 @@ import { cannabisStore } from './cannabis-store.js';
 import { supplementsStore } from './supplements-store.js';
 
 /**
- * Orquestra o carregamento completo dos dados:
- * 1. ANVISA CSV (bloqueante — necessário antes de aceitar requisições)
- * 2. CMED preços (não-bloqueante — enriquece em background)
+ * Dispara o carregamento de todos os datasets em background. Esta função
+ * NÃO bloqueia — retorna imediatamente. O servidor MCP sobe primeiro
+ * (via `startServer()`) e responde `initialize`/`tools/list` normalmente
+ * enquanto os dados ainda carregam. Tools que dependem de cada store
+ * verificam o estado individualmente e respondem com mensagem amigável
+ * "carregando..." ou "indisponível" quando o store ainda não está pronto.
+ *
+ * Decisão de design: NUNCA matar o processo por falha em download. Se
+ * a ANVISA cair, o transport stdio permanece up — o usuário só perde
+ * acesso ao dataset que falhou, não ao servidor inteiro.
  */
-export async function loadAllData(): Promise<void> {
-  // ── Fase 1: ANVISA CSV (obrigatório) ──────────────────────────
-  try {
-    if (!isLocalCsvFresh()) {
-      console.error('[Loader] CSV ANVISA ausente ou desatualizado. Baixando...');
-      await downloadAnvisaCsv();
-    } else {
-      console.error('[Loader] CSV ANVISA em cache. Carregando localmente...');
-    }
+export function loadAllData(): void {
+  // ── ANVISA CSV (background) ────────────────────────────────────
+  loadMedications().catch(err => {
+    console.error('[Loader] Falha ao carregar ANVISA medicamentos:', err.message);
+    console.error('[Loader] Tools de medicamentos ficarão indisponíveis até o próximo refresh.');
+    medicationStore.markFailed();
+  });
 
-    const medications = await parseAnvisaCsv();
-    medicationStore.load(medications);
-  } catch (error) {
-    console.error('[Loader] ERRO CRÍTICO ao carregar dados ANVISA:', error);
-    throw error; // Sem dados ANVISA o servidor não pode funcionar
-  }
-
-  // ── Fase 2: CID-10 (background, não-bloqueante) ───────────────
+  // ── CID-10 (background) ────────────────────────────────────────
   loadCid10()
     .then(entries => {
       if (entries.length > 0) cid10Store.load(entries);
@@ -48,7 +46,7 @@ export async function loadAllData(): Promise<void> {
       console.error('[Loader] Funcionalidades CID-10 indisponíveis.');
     });
 
-  // ── Fase 3: CMED preços (background, não-bloqueante) ──────────
+  // ── CMED preços (background) ───────────────────────────────────
   loadCmedPrices()
     .then(priceMap => {
       if (priceMap.size > 0) {
@@ -60,7 +58,7 @@ export async function loadAllData(): Promise<void> {
       console.error('[Loader] Servidor operacional, mas dados de preço indisponíveis.');
     });
 
-  // ── Fase 4: Cannabis (background, não-bloqueante) ─────────────
+  // ── Cannabis (background) ──────────────────────────────────────
   loadCannabisProducts()
     .then(products => {
       if (products.length > 0) cannabisStore.load(products);
@@ -69,7 +67,7 @@ export async function loadAllData(): Promise<void> {
       console.error('[Loader] Aviso: falha ao carregar produtos cannabis:', err.message);
     });
 
-  // ── Fase 5: Suplementos/Alimentos (background, não-bloqueante) ─
+  // ── Suplementos/Alimentos (background) ─────────────────────────
   loadSupplements()
     .then(supplements => {
       if (supplements.length > 0) supplementsStore.load(supplements);
@@ -77,6 +75,17 @@ export async function loadAllData(): Promise<void> {
     .catch(err => {
       console.error('[Loader] Aviso: falha ao carregar suplementos:', err.message);
     });
+}
+
+async function loadMedications() {
+  if (!isLocalCsvFresh()) {
+    console.error('[Loader] CSV ANVISA ausente ou desatualizado. Baixando...');
+    await downloadAnvisaCsv();
+  } else {
+    console.error('[Loader] CSV ANVISA em cache. Carregando localmente...');
+  }
+  const medications = await parseAnvisaCsv();
+  medicationStore.load(medications);
 }
 
 async function loadCannabisProducts() {

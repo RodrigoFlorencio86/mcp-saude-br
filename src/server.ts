@@ -353,9 +353,38 @@ const TOOL_DEFINITIONS: Tool[] = [
 
 type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
+/**
+ * Retorna um ToolResult de erro amigável se o store de medicamentos ainda
+ * não está pronto OU se o load falhou. Tools devem checar o retorno antes
+ * de consultar o store. `null` = OK, pode prosseguir.
+ *
+ * Esse padrão evita que o servidor MCP morra no boot quando uma fonte
+ * upstream (ANVISA) cai — o transport stdio fica up e tools respondem
+ * com mensagem clara em vez de timeout.
+ */
+async function ensureMedicationStoreReady(): Promise<ToolResult | null> {
+  const ok = await medicationStore.waitForReady(15_000);
+  if (ok) return null;
+  if (medicationStore.hasFailed) {
+    return {
+      content: [{
+        type: 'text',
+        text: 'Base ANVISA de medicamentos indisponível no momento (falha no download). O servidor tenta novamente periodicamente — aguarde alguns minutos e tente de novo.',
+      }],
+    };
+  }
+  return {
+    content: [{
+      type: 'text',
+      text: 'Base ANVISA de medicamentos ainda carregando (~10s no primeiro start). Tente de novo em alguns segundos.',
+    }],
+  };
+}
+
 async function handleSearchMedications(args: unknown): Promise<ToolResult> {
   const { query, type, manufacturer, limit } = schemas.search_medications.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   let results = medicationStore.search(query, Math.min(limit * 3, 300));
 
@@ -384,7 +413,8 @@ async function handleSearchMedications(args: unknown): Promise<ToolResult> {
 
 async function handleGetMedicationDetails(args: unknown): Promise<ToolResult> {
   const { name, registration_number } = schemas.get_medication_details.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   let med = registration_number
     ? medicationStore.getByRegistration(registration_number)
@@ -457,7 +487,8 @@ async function handleGetBula(args: unknown): Promise<ToolResult> {
 
 async function handleListManufacturers(args: unknown): Promise<ToolResult> {
   const { active_only, limit } = schemas.list_manufacturers.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   const manufacturers = medicationStore.listManufacturers(active_only).slice(0, limit);
 
@@ -479,7 +510,8 @@ async function handleListManufacturers(args: unknown): Promise<ToolResult> {
 
 async function handleGetManufacturerMedications(args: unknown): Promise<ToolResult> {
   const { manufacturer_name, limit } = schemas.get_manufacturer_medications.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   const meds = medicationStore.getByManufacturer(manufacturer_name, limit);
 
@@ -501,7 +533,8 @@ async function handleGetManufacturerMedications(args: unknown): Promise<ToolResu
 
 async function handleListGenericMedications(args: unknown): Promise<ToolResult> {
   const { active_ingredient, limit } = schemas.list_generic_medications.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   const meds = medicationStore.listGenerics(active_ingredient, limit);
 
@@ -525,7 +558,8 @@ async function handleListGenericMedications(args: unknown): Promise<ToolResult> 
 
 async function handleSearchByActiveIngredient(args: unknown): Promise<ToolResult> {
   const { ingredient_name, type, limit } = schemas.search_by_active_ingredient.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   let meds = medicationStore.searchByIngredient(ingredient_name, limit * 3);
 
@@ -560,7 +594,8 @@ async function handleSearchByActiveIngredient(args: unknown): Promise<ToolResult
 
 async function handleCheckPrice(args: unknown): Promise<ToolResult> {
   const { medication_name, state } = schemas.check_price.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   const stats = medicationStore.getStats();
   if (!stats.cmedLoaded) {
@@ -612,7 +647,8 @@ async function handleCheckPrice(args: unknown): Promise<ToolResult> {
 
 async function handleGetMedicationsByCondition(args: unknown): Promise<ToolResult> {
   const { condition, limit } = schemas.get_medications_by_condition.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   // Primeira tentativa: busca direta no store ANVISA pela condição
   const anvisaResults = medicationStore.search(condition, 10);
@@ -653,7 +689,8 @@ async function handleGetMedicationsByCondition(args: unknown): Promise<ToolResul
 
 async function handleCheckAnvisaRegistration(args: unknown): Promise<ToolResult> {
   const { registration_number } = schemas.check_anvisa_registration.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   const med = medicationStore.getByRegistration(registration_number);
 
@@ -694,7 +731,8 @@ async function handleCheckAnvisaRegistration(args: unknown): Promise<ToolResult>
 
 async function handleListTherapeuticClasses(args: unknown): Promise<ToolResult> {
   const { limit } = schemas.list_therapeutic_classes.parse(args);
-  await medicationStore.waitForReady();
+  const blocked = await ensureMedicationStoreReady();
+  if (blocked) return blocked;
 
   const classes = medicationStore.listTherapeuticClasses().slice(0, limit);
 
